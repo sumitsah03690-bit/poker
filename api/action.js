@@ -147,7 +147,7 @@ module.exports = async function (req, res) {
         if (game.roundIdx < ROUND_NAMES.length - 1) {
           game.roundIdx++;
           game.players.forEach(p => { p.bet = 0; }); // reset bets for new street
-          game.callAmount = 0;
+          // callAmount stays the same — players must still match it
           game.roundMessage = ROUND_MSGS[game.roundIdx];
           log(game, `→ ${ROUND_NAMES[game.roundIdx]}`);
         }
