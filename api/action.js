@@ -9,77 +9,17 @@ function addHistory(game, text, amount) {
   if (game.history.length > 60) game.history.pop();
 }
 
-function calcStartingBid(chips) {
-  return Math.round(chips / 40);
-}
-
-// Check if betting round is complete (all active players matched the bet)
-function isBettingComplete(game) {
-  const activePlayers = game.players.filter(p => !p.folded && p.chips > 0);
-  if (activePlayers.length <= 1) return true;
-
-  const maxBet = Math.max(...game.players.map(p => p.bet));
-  // All active players must have acted and matched the current bet
-  return activePlayers.every(p => p.bet === maxBet && p.hasActed);
-}
-
-// Advance to next active player
-function nextPlayer(game) {
-  const n = game.players.length;
-  let next = (game.currentPlayerIdx + 1) % n;
-  let tries = 0;
-  while ((game.players[next].folded || game.players[next].chips === 0) && tries < n) {
-    next = (next + 1) % n;
-    tries++;
-  }
-  game.currentPlayerIdx = next;
-}
-
-// Start a new betting round (new street)
-function startNewBettingRound(game) {
-  game.players.forEach(p => { p.bet = 0; p.hasActed = false; });
-  // First active player after dealer starts
-  game.currentPlayerIdx = game.dealerIdx;
-  nextPlayer(game);
-}
-
-// Auto-advance round when betting is complete
-function checkAndAdvanceRound(game) {
-  if (!isBettingComplete(game)) return false;
-
-  const ROUNDS = ['Pre-flop', 'Flop', 'Turn', 'River', 'Showdown'];
-
-  if (game.roundIdx < ROUNDS.length - 1) {
-    game.roundIdx++;
-    game.roundMessage = getRoundMessage(game.roundIdx);
-    addHistory(game, `Street: ${ROUNDS[game.roundIdx]}`);
-    startNewBettingRound(game);
-    return true;
-  }
-  return false;
-}
-
-function getRoundMessage(roundIdx) {
-  const messages = [
-    '',
-    '🃏 Deal 3 community cards face up',
-    '🃏 Deal the 4th community card',
-    '🃏 Deal the 5th and final card',
-    '🏆 Reveal hands — award the pot!'
-  ];
-  return messages[roundIdx] || '';
-}
-
-// Start a brand new hand
+// Start a new hand
 function startNewHand(game) {
   game.handNum++;
   game.roundIdx = 0;
   game.pot = 0;
+  game.callAmount = 0;
   game.roundMessage = '';
-  game.players.forEach(p => { p.bet = 0; p.folded = false; p.hasActed = false; });
+  game.players.forEach(p => { p.bet = 0; p.folded = false; });
   game.dealerIdx = (game.dealerIdx + 1) % game.players.length;
 
-  // Post starting bid from player left of dealer
+  // Post starting bid
   if (game.players.length >= 2) {
     const bidIdx = (game.dealerIdx + 1) % game.players.length;
     const bidder = game.players[bidIdx];
@@ -87,19 +27,15 @@ function startNewHand(game) {
     bidder.chips -= bid;
     bidder.bet = bid;
     game.pot = bid;
+    game.callAmount = bid;
     addHistory(game, `${bidder.name} posts bid`, bid);
-
-    // First player to act is left of bid poster
-    game.currentPlayerIdx = (bidIdx + 1) % game.players.length;
-    // Skip folded/busted players
-    let tries = 0;
-    while ((game.players[game.currentPlayerIdx].folded || game.players[game.currentPlayerIdx].chips === 0) && tries < game.players.length) {
-      game.currentPlayerIdx = (game.currentPlayerIdx + 1) % game.players.length;
-      tries++;
-    }
   }
 
   addHistory(game, `Hand ${game.handNum} begins`);
+}
+
+function getRoundMessage(idx) {
+  return ['', '🃏 Deal 3 community cards face up', '🃏 Deal the 4th community card', '🃏 Deal the 5th and final card', '🏆 Reveal hands — award the pot!'][idx] || '';
 }
 
 module.exports = async function handler(req, res) {
@@ -107,42 +43,28 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { code, action, playerName, amount, targetIdx, targetName } = req.body;
-
-    if (!code || !action) {
-      return res.status(400).json({ error: 'Code and action required' });
-    }
+    const { code, action, playerName, amount, targetName } = req.body;
+    if (!code || !action) return res.status(400).json({ error: 'Code and action required' });
 
     const games = await getGamesCollection();
     const game = await games.findOne({ code: code.toUpperCase() });
+    if (!game) return res.status(404).json({ error: 'Game not found' });
 
-    if (!game) {
-      return res.status(404).json({ error: 'Game not found' });
-    }
-
-    // Find player by name
     const playerIdx = game.players.findIndex(p => p.name.toLowerCase() === (playerName || '').toLowerCase());
 
     switch (action) {
 
       case 'fold': {
-        // Validate it's this player's turn
-        if (playerIdx !== game.currentPlayerIdx) {
-          return res.status(400).json({ error: 'Not your turn!' });
-        }
+        if (playerIdx < 0) return res.status(400).json({ error: 'Player not found' });
         const p = game.players[playerIdx];
-        if (!p || p.folded) break;
+        if (p.folded) break;
         p.folded = true;
-        p.hasActed = true;
         addHistory(game, `${p.name} folds`);
 
-        // Check if only 1 player left
+        // Auto-win if only 1 left
         const active = game.players.filter(x => !x.folded);
         if (active.length === 1) {
           const winner = active[0];
@@ -150,69 +72,69 @@ module.exports = async function handler(req, res) {
           addHistory(game, `${winner.name} wins (last standing)`, game.pot);
           game.pot = 0;
           startNewHand(game);
-        } else {
-          nextPlayer(game);
-          checkAndAdvanceRound(game);
         }
         break;
       }
 
       case 'call': {
-        if (playerIdx !== game.currentPlayerIdx) {
-          return res.status(400).json({ error: 'Not your turn!' });
-        }
+        if (playerIdx < 0) return res.status(400).json({ error: 'Player not found' });
         const p = game.players[playerIdx];
-        if (!p || p.folded) break;
-
-        const maxBet = Math.max(...game.players.map(x => x.bet));
-        if (p.bet >= maxBet) {
-          // It's a check
-          p.hasActed = true;
+        if (p.folded) break;
+        const callAmt = game.callAmount - p.bet;
+        if (callAmt <= 0) {
           addHistory(game, `${p.name} checks`);
         } else {
-          const callAmt = maxBet - p.bet;
           const actual = Math.min(callAmt, p.chips);
           p.chips -= actual;
           p.bet += actual;
           game.pot += actual;
-          p.hasActed = true;
           addHistory(game, `${p.name} calls`, actual);
         }
-
-        nextPlayer(game);
-        checkAndAdvanceRound(game);
         break;
       }
 
       case 'raise': {
-        if (playerIdx !== game.currentPlayerIdx) {
-          return res.status(400).json({ error: 'Not your turn!' });
-        }
+        if (playerIdx < 0) return res.status(400).json({ error: 'Player not found' });
         const p = game.players[playerIdx];
-        if (!p || p.folded) break;
+        if (p.folded) break;
         let amt = parseInt(amount) || 0;
         if (amt <= 0) break;
         amt = Math.min(amt, p.chips);
         p.chips -= amt;
         p.bet += amt;
         game.pot += amt;
-        p.hasActed = true;
-
-        // When someone raises, everyone else needs to act again
-        game.players.forEach((pl, i) => {
-          if (i !== playerIdx && !pl.folded && pl.chips > 0) {
-            pl.hasActed = false;
-          }
-        });
-
+        // Update call amount if this player's total bet is higher
+        if (p.bet > game.callAmount) {
+          game.callAmount = p.bet;
+        }
         addHistory(game, p.chips === 0 ? `${p.name} ALL IN` : `${p.name} raises`, amt);
-        nextPlayer(game);
+        break;
+      }
+
+      case 'advance-round': {
+        const ROUNDS = ['Pre-flop', 'Flop', 'Turn', 'River', 'Showdown'];
+        if (game.roundIdx < ROUNDS.length - 1) {
+          game.roundIdx++;
+          // Reset bets for new street but keep call amount at 0
+          game.players.forEach(p => { p.bet = 0; });
+          game.callAmount = 0;
+          game.roundMessage = getRoundMessage(game.roundIdx);
+          addHistory(game, `Street: ${ROUNDS[game.roundIdx]}`);
+        }
+        break;
+      }
+
+      case 'reset-call': {
+        // Host can reset call amount
+        const newCall = parseInt(amount) || 0;
+        game.callAmount = Math.max(0, newCall);
+        addHistory(game, `Call reset to ${game.callAmount}`);
         break;
       }
 
       case 'award-pot': {
-        const winnerIdx = game.players.findIndex(p => p.name.toLowerCase() === (targetName || '').toLowerCase());
-        const winner = game.players[winnerIdx];
+        const tName = (targetName || '').trim();
+        const winner = game.players.find(p => p.name.toLowerCase() === tName.toLowerCase());
         if (!winner) break;
         const won = game.pot;
         winner.chips += won;
@@ -228,10 +150,10 @@ module.exports = async function handler(req, res) {
       }
 
       case 'take-from-pot': {
-        const tName = (targetName || '').trim();
+        const tName2 = (targetName || '').trim();
         const tAmt = parseInt(amount) || 0;
-        if (!tName || tAmt <= 0) break;
-        const target = game.players.find(pl => pl.name.toLowerCase() === tName.toLowerCase());
+        if (!tName2 || tAmt <= 0) break;
+        const target = game.players.find(p => p.name.toLowerCase() === tName2.toLowerCase());
         if (!target) break;
         const actual = Math.min(tAmt, game.pot);
         game.pot -= actual;
@@ -242,7 +164,7 @@ module.exports = async function handler(req, res) {
 
       case 'loan': {
         const lender = game.players.find(p => p.name.toLowerCase() === (playerName || '').toLowerCase());
-        const borrower = game.players[targetIdx];
+        const borrower = game.players.find(p => p.name.toLowerCase() === (targetName || '').toLowerCase());
         const loanAmt = parseInt(amount) || 0;
         if (!lender || !borrower || loanAmt <= 0 || loanAmt > lender.chips) break;
         lender.chips -= loanAmt;
@@ -256,7 +178,7 @@ module.exports = async function handler(req, res) {
 
       case 'collect-debt': {
         const collector = game.players.find(p => p.name.toLowerCase() === (playerName || '').toLowerCase());
-        const debtor = game.players[targetIdx];
+        const debtor = game.players.find(p => p.name.toLowerCase() === (targetName || '').toLowerCase());
         if (!collector || !debtor) break;
         const debtIdx = debtor.debts.findIndex(d => d.from === collector.name);
         if (debtIdx < 0) break;
@@ -264,7 +186,7 @@ module.exports = async function handler(req, res) {
         if (debtor.chips < debt.amount) break;
         debtor.chips -= debt.amount;
         collector.chips += debt.amount;
-        addHistory(game, `${collector.name} collected debt from ${debtor.name}`, debt.amount);
+        addHistory(game, `${collector.name} collected from ${debtor.name}`, debt.amount);
         debtor.debts.splice(debtIdx, 1);
         break;
       }
@@ -280,10 +202,10 @@ module.exports = async function handler(req, res) {
         $set: {
           players: game.players,
           pot: game.pot,
+          callAmount: game.callAmount,
           roundIdx: game.roundIdx,
           handNum: game.handNum,
           dealerIdx: game.dealerIdx,
-          currentPlayerIdx: game.currentPlayerIdx,
           roundMessage: game.roundMessage || '',
           history: game.history
         }

@@ -7,32 +7,28 @@
   <meta name="description" content="Create a game, share the code, track bets — all you need is a deck of cards." />
   <meta name="theme-color" content="#0d2b1a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-
 <div class="container">
-  <nav role="navigation">
+  <nav>
     <div class="logo">
-      <div class="logo-chips" aria-hidden="true">
-        <span class="logo-chip"></span><span class="logo-chip"></span><span class="logo-chip"></span>
-      </div>
+      <div class="logo-chips"><span class="logo-chip"></span><span class="logo-chip"></span><span class="logo-chip"></span></div>
       <span class="logo-text">pokerchips<span>.io</span></span>
     </div>
     <a href="#how-it-works">How to Play</a>
   </nav>
 
   <!-- HOME -->
-  <main id="home-view" class="view" role="main">
+  <main id="home-view" class="view">
     <section class="hero">
       <div class="hero-badge">♠ No chips? No problem ♠</div>
       <h1>Play poker<br>without <em>the chips</em></h1>
       <p>Create a game, share the code, and track bets — all you need is a deck of cards.</p>
-      <div class="chip-row" aria-hidden="true">
+      <div class="chip-row">
         <div class="chip chip-w">$1</div>
         <div class="chip chip-r">$5</div>
         <div class="chip chip-b">$10</div>
@@ -42,9 +38,9 @@
     </section>
 
     <section class="panel">
-      <div class="panel-tabs" role="tablist">
-        <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('create', event)">Create Game</button>
-        <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('join', event)">Join Game</button>
+      <div class="panel-tabs">
+        <button class="tab-btn active" onclick="switchTab('create', event)">Create Game</button>
+        <button class="tab-btn" onclick="switchTab('join', event)">Join Game</button>
       </div>
       <div class="panel-body">
         <div class="tab-content active" id="tab-create">
@@ -77,7 +73,7 @@
           </div>
           <div class="form-group">
             <label for="game-code-input">Game Code</label>
-            <input type="text" id="game-code-input" placeholder="e.g. ACES7" maxlength="8" style="letter-spacing:0.1em; text-transform:uppercase;" autocomplete="off" />
+            <input type="text" id="game-code-input" placeholder="e.g. ACES7" maxlength="8" style="letter-spacing:0.1em;text-transform:uppercase" autocomplete="off" />
           </div>
           <button class="btn btn-outline" onclick="joinGame()">→ Join Table</button>
         </div>
@@ -88,79 +84,90 @@
       <div class="section-label">How it works</div>
       <div class="section-title">Ready in seconds</div>
       <div class="steps-grid">
-        <div class="step-card"><div class="step-num">01</div><div class="step-title">Create</div><div class="step-desc">Pick chips, get a 5-letter code.</div></div>
+        <div class="step-card"><div class="step-num">01</div><div class="step-title">Create</div><div class="step-desc">Pick chips, get a code.</div></div>
         <div class="step-card"><div class="step-num">02</div><div class="step-title">Share</div><div class="step-desc">Friends join with the code.</div></div>
-        <div class="step-card"><div class="step-num">03</div><div class="step-title">Play</div><div class="step-desc">Fold, call, or raise on your turn.</div></div>
+        <div class="step-card"><div class="step-num">03</div><div class="step-title">Play</div><div class="step-desc">Fold, call, or raise freely.</div></div>
         <div class="step-card"><div class="step-num">04</div><div class="step-title">Win</div><div class="step-desc">Best hand takes the pot!</div></div>
       </div>
     </section>
   </main>
 
-  <!-- GAME -->
+  <!-- GAME VIEW -->
   <div id="game-view" class="view hidden">
+    <!-- Header -->
     <div class="game-header">
       <div>
         <div class="game-title">The Table</div>
         <div class="game-meta" id="game-hand-display">Hand 1</div>
       </div>
       <div class="game-controls">
-        <div class="game-code-badge" onclick="copyCode()" id="game-code-display" role="button" tabindex="0">—</div>
+        <div class="game-code-badge" onclick="copyCode()" id="game-code-display">—</div>
         <button class="btn-small" onclick="leaveGame()">✕</button>
       </div>
     </div>
 
-    <!-- Round Stepper -->
+    <!-- Round pills -->
     <div class="round-stepper">
       <div class="round-pills" id="round-pills"></div>
     </div>
 
-    <!-- Table Message -->
+    <!-- Table message -->
     <div class="table-message" id="table-message"></div>
 
-    <!-- Pot + Log -->
+    <!-- Pot + Call Amount + Log -->
     <div class="pot-zone">
-      <div class="pot-top">
-        <div class="pot-label">♦ Pot ♦</div>
-        <div class="pot-amount" id="pot-display">0</div>
-      </div>
-      <div class="pot-actions">
-        <button class="pot-act-btn warn" onclick="takeFromPot()">↩ Undo</button>
-        <button class="pot-act-btn" onclick="newHand()">🔄 New Hand</button>
+      <div class="pot-header-row">
+        <div class="pot-col">
+          <div class="pot-label">♦ POT ♦</div>
+          <div class="pot-amount" id="pot-display">0</div>
+        </div>
+        <div class="pot-col call-col">
+          <div class="pot-label">CALL</div>
+          <div class="call-amount" id="call-amount-display">0</div>
+        </div>
       </div>
       <div class="activity-log" id="activity-log"></div>
     </div>
 
     <!-- Players -->
-    <div class="players-grid" id="players-grid" role="list"></div>
+    <div class="players-grid" id="players-grid"></div>
 
-    <!-- YOUR Action Bar (only visible on your turn) -->
-    <div class="action-bar" id="action-bar">
-      <div class="turn-label" id="turn-label">Waiting...</div>
-      <div id="action-buttons" style="display:none;">
-        <div class="action-btns-row">
-          <button class="action-btn fold" onclick="doFold()">✕ Fold</button>
-          <button class="action-btn check-call" id="btn-check" onclick="doCall()">Check</button>
-          <button class="action-btn check-call" id="btn-call" onclick="doCall()" style="display:none">Call</button>
-          <button class="action-btn raise" onclick="openRaisePanel()">↑ Raise</button>
-        </div>
+    <!-- HOST CONTROLS (only visible to creator) -->
+    <div class="host-controls" id="host-controls" style="display:none;">
+      <div class="host-label">🎩 Host Controls</div>
+      <div class="host-btns">
+        <button class="host-btn" onclick="advanceRound()">Next Round →</button>
+        <button class="host-btn" onclick="resetCallAmount()">Reset Call</button>
+        <button class="host-btn" onclick="openTakeModal()">↩ Take from Pot</button>
+        <button class="host-btn" onclick="newHand()">🔄 New Hand</button>
       </div>
     </div>
 
-    <!-- Showdown bar -->
-    <div class="showdown-bar" id="showdown-bar" style="display:none;">
+    <!-- Showdown -->
+    <div id="showdown-bar" style="display:none;">
       <button class="btn" onclick="openAwardModal()" style="margin:12px 0;">🏆 Award the Pot</button>
     </div>
 
-    <!-- Raise Panel -->
+    <!-- MY ACTION BAR (only for your own actions) -->
+    <div class="action-bar" id="my-action-bar" style="display:none;">
+      <div class="action-btns-row">
+        <button class="action-btn fold" onclick="doFold()">✕ Fold</button>
+        <button class="action-btn check-call" id="btn-check" onclick="doCall()">Check</button>
+        <button class="action-btn check-call" id="btn-call" onclick="doCall()" style="display:none">Call 50</button>
+        <button class="action-btn raise" onclick="openRaisePanel()">↑ Raise</button>
+      </div>
+    </div>
+
+    <!-- Raise panel -->
     <div class="raise-panel" id="raise-panel">
-      <div class="raise-for-label">Your raise <span id="raise-max-info" style="float:right; color:var(--muted);"></span></div>
+      <div class="raise-for-label">Your raise <span id="raise-max-info" style="float:right;color:var(--muted)"></span></div>
       <div class="raise-amount-display" id="raise-amount-display">0</div>
       <div class="raise-quick-btns">
         <button class="raise-q-btn minus" onclick="adjustRaise(-100)">−100</button>
         <button class="raise-q-btn minus" onclick="adjustRaise(-50)">−50</button>
         <button class="raise-q-btn" onclick="adjustRaise(50)">+50</button>
         <button class="raise-q-btn" onclick="adjustRaise(100)">+100</button>
-        <button class="raise-q-btn" onclick="raiseAllIn()" style="border-color:var(--red); color:var(--red-soft);">ALL IN</button>
+        <button class="raise-q-btn" onclick="raiseAllIn()" style="border-color:var(--red);color:var(--red-soft)">ALL IN</button>
       </div>
       <div class="raise-manual-row">
         <input type="number" id="raise-manual-input" placeholder="Custom amount" min="1" oninput="setRaiseManual()" />
@@ -174,21 +181,39 @@
 </div>
 
 <!-- AWARD MODAL -->
-<div class="modal-overlay" id="award-modal" role="dialog" aria-modal="true">
+<div class="modal-overlay" id="award-modal">
   <div class="modal">
     <h3>🏆 Award the Pot</h3>
-    <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">Who won?</p>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Who won?</p>
     <div id="winner-options"></div>
     <div class="winner-chips-display" id="pot-award-display"></div>
     <button class="btn btn-outline" style="margin-top:8px" onclick="closeAwardModal()">Cancel</button>
   </div>
 </div>
 
+<!-- TAKE FROM POT MODAL -->
+<div class="modal-overlay" id="take-modal">
+  <div class="modal">
+    <h3>↩ Take from Pot</h3>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Return chips from pot (max: <strong id="take-pot-max" style="color:var(--gold)">0</strong>)</p>
+    <div class="form-group">
+      <label for="take-player-select">Give to</label>
+      <select id="take-player-select"></select>
+    </div>
+    <div class="form-group">
+      <label for="take-amount-input">Amount</label>
+      <input type="number" id="take-amount-input" placeholder="e.g. 50" min="1" />
+    </div>
+    <button class="btn" onclick="confirmTakeFromPot()">Return Chips</button>
+    <button class="btn btn-outline" style="margin-top:8px" onclick="closeTakeModal()">Cancel</button>
+  </div>
+</div>
+
 <!-- LOAN MODAL -->
-<div class="modal-overlay" id="loan-modal" role="dialog" aria-modal="true">
+<div class="modal-overlay" id="loan-modal">
   <div class="modal">
     <h3>💰 Give Loan</h3>
-    <p style="color:var(--muted); font-size:0.85rem; margin-bottom:12px;">Loan chips to <strong id="loan-target-name" style="color:var(--white);">—</strong></p>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Loan chips to <strong id="loan-target-name" style="color:var(--white)">—</strong></p>
     <div class="form-group">
       <label for="loan-amount">Amount</label>
       <input type="number" id="loan-amount" placeholder="e.g. 500" min="1" />
@@ -198,7 +223,7 @@
   </div>
 </div>
 
-<div class="toast" id="toast" role="alert"></div>
+<div class="toast" id="toast"></div>
 <script src="js/app.js"></script>
 </body>
 </html>
