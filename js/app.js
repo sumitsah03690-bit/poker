@@ -1,12 +1,13 @@
 // ============================================================
-//  PokerChips.io — Game Logic
+//  PokerChips.io — Personal Edition
+//  Game Logic with Debt System
 // ============================================================
 
 // ====== STATE ======
 const gameState = {
   code: '',
   pot: 0,
-  bigBlind: 40,
+  startingBid: 50,
   players: [],
   currentPlayerIdx: 0,
   dealerIdx: 0,
@@ -15,10 +16,16 @@ const gameState = {
   currentBet: 0,
   myIdx: 0,
   startingChips: 2000,
-  history: []
+  history: [],
+  isHost: false
 };
 
 const ROUNDS = ['Pre-flop', 'Flop', 'Turn', 'River', 'Showdown'];
+
+// Chip-to-bid mapping: chips / 40
+function calcStartingBid(chips) {
+  return Math.round(chips / 40);
+}
 
 // ====== UTILITIES ======
 function randomCode() {
@@ -46,25 +53,30 @@ function addHistory(action, amount) {
 // ====== FLOATING SUIT PARTICLES ======
 function spawnSuitParticles() {
   const suits = ['♠', '♥', '♦', '♣'];
-  const container = document.body;
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 10; i++) {
     const el = document.createElement('span');
     el.className = 'suit-particle';
     el.textContent = suits[Math.floor(Math.random() * suits.length)];
     el.style.left = Math.random() * 100 + 'vw';
     el.style.animationDuration = (15 + Math.random() * 20) + 's';
     el.style.animationDelay = (Math.random() * 15) + 's';
-    el.style.fontSize = (0.8 + Math.random() * 1.2) + 'rem';
-    container.appendChild(el);
+    el.style.fontSize = (0.8 + Math.random() * 1) + 'rem';
+    document.body.appendChild(el);
   }
 }
 
 // ====== TAB LOGIC ======
 function switchTab(tab, e) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.remove('active');
+    b.setAttribute('aria-selected', 'false');
+  });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.querySelector(`#tab-${tab}`).classList.add('active');
-  if (e && e.target) e.target.classList.add('active');
+  if (e && e.target) {
+    e.target.classList.add('active');
+    e.target.setAttribute('aria-selected', 'true');
+  }
 }
 
 // ====== VIEW TRANSITIONS ======
@@ -81,18 +93,26 @@ function showView(showId, hideId) {
   }, 150);
 }
 
+// ====== STARTING BID DISPLAY ======
+function updateBidDisplay() {
+  const chips = parseInt(document.getElementById('start-chips').value);
+  const bid = calcStartingBid(chips);
+  const display = document.getElementById('bid-display-value');
+  if (display) display.textContent = bid;
+}
+
 // ====== CREATE GAME ======
 function createGame() {
   const name = document.getElementById('host-name').value.trim();
   if (!name) { showToast('Enter your name first!'); return; }
   const chips = parseInt(document.getElementById('start-chips').value);
-  const bb = parseInt(document.getElementById('big-blind').value);
 
   gameState.code = randomCode();
-  gameState.bigBlind = bb;
   gameState.startingChips = chips;
+  gameState.startingBid = calcStartingBid(chips);
+  gameState.isHost = true;
   gameState.players = [
-    { name, chips, bet: 0, folded: false, isMe: true },
+    { name, chips, bet: 0, folded: false, isMe: true, debts: [] },
   ];
   gameState.myIdx = 0;
   gameState.dealerIdx = 0;
@@ -116,76 +136,88 @@ function joinGame() {
   const code = document.getElementById('game-code-input').value.trim().toUpperCase();
   if (!name) { showToast('Enter your name!'); return; }
   if (!code) { showToast('Enter a game code!'); return; }
-  showToast('Game not found — try the demo!');
+
+  // In a local-only app, simulate joining by adding to the game state
+  // In production this would be a server call
+  if (gameState.code && gameState.code === code) {
+    // Check if name already exists
+    const exists = gameState.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+    if (exists) { showToast('That name is taken!'); return; }
+
+    gameState.players.push({
+      name,
+      chips: gameState.startingChips,
+      bet: 0,
+      folded: false,
+      isMe: false,
+      debts: []
+    });
+    addHistory(`${name} joined the table`);
+    renderGame();
+    showToast(`${name} joined!`);
+  } else {
+    showToast('Game not found — try the demo!');
+  }
 }
 
 function joinDemo() {
-  const name = document.getElementById('join-name').value.trim() || 'Guest';
+  const name = document.getElementById('join-name').value.trim() || 'You';
   gameState.code = 'DEMO1';
-  gameState.bigBlind = 40;
   gameState.startingChips = 2000;
+  gameState.startingBid = calcStartingBid(2000);
+  gameState.isHost = false;
   gameState.pot = 0;
   gameState.currentBet = 0;
   gameState.handNum = 1;
   gameState.round = 'Pre-flop';
   gameState.history = [];
 
-  const demoPlayers = [
-    { name: 'Alice',  chips: 2000, bet: 0, folded: false, isMe: false },
-    { name: 'Bob',    chips: 2000, bet: 0, folded: false, isMe: false },
-    { name: name,     chips: 2000, bet: 0, folded: false, isMe: true  },
-    { name: 'Diana',  chips: 2000, bet: 0, folded: false, isMe: false },
+  gameState.players = [
+    { name: 'Alice',  chips: 2000, bet: 0, folded: false, isMe: false, debts: [] },
+    { name: 'Bob',    chips: 2000, bet: 0, folded: false, isMe: false, debts: [] },
+    { name: name,     chips: 2000, bet: 0, folded: false, isMe: true,  debts: [] },
+    { name: 'Diana',  chips: 2000, bet: 0, folded: false, isMe: false, debts: [] },
   ];
 
-  gameState.players = demoPlayers;
   gameState.myIdx = 2;
   gameState.dealerIdx = 0;
 
-  // Post blinds (SB = player after dealer, BB = player after SB)
-  postBlinds();
+  // Post starting bid
+  postStartingBid();
 
-  gameState.currentPlayerIdx = gameState.myIdx; // UTG = after BB
+  // UTG (after the bid poster)
+  const bidPosterIdx = (gameState.dealerIdx + 1) % gameState.players.length;
+  gameState.currentPlayerIdx = (bidPosterIdx + 1) % gameState.players.length;
 
   showView('game-view', 'home-view');
   renderGame();
   addHistory('Demo game started');
-  showToast('Demo game started! It\'s your turn.');
+  showToast('Demo game started!');
 }
 
-function postBlinds() {
+function postStartingBid() {
   const numPlayers = gameState.players.length;
   if (numPlayers < 2) return;
 
-  const sbIdx = (gameState.dealerIdx + 1) % numPlayers;
-  const bbIdx = (gameState.dealerIdx + 2) % numPlayers;
-  const sb = gameState.bigBlind / 2;
-  const bb = gameState.bigBlind;
+  // Only the player left of dealer posts the starting bid
+  const bidderIdx = (gameState.dealerIdx + 1) % numPlayers;
+  const bidder = gameState.players[bidderIdx];
+  const bid = Math.min(gameState.startingBid, bidder.chips);
 
-  const sbPlayer = gameState.players[sbIdx];
-  const bbPlayer = gameState.players[bbIdx];
+  bidder.chips -= bid;
+  bidder.bet = bid;
+  gameState.pot = bid;
+  gameState.currentBet = bid;
 
-  const actualSb = Math.min(sb, sbPlayer.chips);
-  sbPlayer.chips -= actualSb;
-  sbPlayer.bet = actualSb;
-
-  const actualBb = Math.min(bb, bbPlayer.chips);
-  bbPlayer.chips -= actualBb;
-  bbPlayer.bet = actualBb;
-
-  gameState.pot = actualSb + actualBb;
-  gameState.currentBet = actualBb;
-
-  addHistory(`${sbPlayer.name} posts SB`, actualSb);
-  addHistory(`${bbPlayer.name} posts BB`, actualBb);
+  addHistory(`${bidder.name} posts bid`, bid);
 }
 
-// ====== GAME VIEW ======
+// ====== GAME RENDERING ======
 function renderGame() {
-  document.getElementById('game-code-display').textContent = 'CODE: ' + gameState.code;
+  document.getElementById('game-code-display').textContent = gameState.code;
   document.getElementById('game-title-display').textContent = 'The Table';
   document.getElementById('game-round-display').textContent = 'Hand ' + gameState.handNum + ' · ' + gameState.round;
-  document.getElementById('sb-display').textContent = gameState.bigBlind / 2;
-  document.getElementById('bb-display').textContent = gameState.bigBlind;
+  document.getElementById('bid-value-display').textContent = gameState.startingBid;
   document.getElementById('hand-num-display').textContent = gameState.handNum;
 
   const potEl = document.getElementById('pot-display');
@@ -203,21 +235,53 @@ function renderPlayers() {
   gameState.players.forEach((p, i) => {
     const isActive = i === gameState.currentPlayerIdx;
     const isDealer = i === gameState.dealerIdx;
+    const isMe = p.isMe;
     const card = document.createElement('div');
     card.className = 'player-card' + (isActive ? ' active-player' : '') + (p.folded ? ' folded' : '');
     card.setAttribute('role', 'listitem');
-    card.setAttribute('aria-label', `${p.name}, ${p.chips} chips${isActive ? ', current turn' : ''}${p.folded ? ', folded' : ''}`);
 
     const initial = p.name.charAt(0).toUpperCase();
+
+    // Build debts HTML
+    let debtsHtml = '';
+    if (p.debts && p.debts.length > 0) {
+      debtsHtml = '<div class="debt-section">';
+      p.debts.forEach((d, di) => {
+        const lender = gameState.players.find(pl => pl.name === d.from);
+        const canCollect = lender && lender.isMe && p.chips >= d.amount;
+        debtsHtml += `
+          <div class="debt-badge">
+            <span class="debt-text">owes ${d.from}: ${d.amount}</span>
+            ${canCollect ? `<button class="debt-collect-btn" onclick="collectDebt(${i}, ${di})">Collect</button>` : ''}
+          </div>
+        `;
+      });
+      debtsHtml += '</div>';
+    }
+
+    // Show loan button on other players' cards (only if they're low/out)
+    let loanBtn = '';
+    if (!isMe && p.chips < gameState.startingBid) {
+      loanBtn = `<button class="player-loan-btn" onclick="openLoanModal(${i})">💰 Give Loan</button>`;
+    }
+
     card.innerHTML = `
-      <div class="player-avatar">
-        ${initial}
-        ${isDealer ? '<span class="dealer-chip">D</span>' : ''}
+      <div class="player-top">
+        <div class="player-avatar">
+          ${initial}
+          ${isDealer ? '<span class="dealer-chip">D</span>' : ''}
+        </div>
+        <div>
+          <div class="player-name">${p.name}${isMe ? ' <span class="player-you-tag">(you)</span>' : ''}</div>
+        </div>
       </div>
-      <div class="player-name">${p.name}${p.isMe ? ' <span class="player-you-tag">(you)</span>' : ''}</div>
-      <div class="player-chips-label">chips</div>
-      <div class="player-chips">${p.chips.toLocaleString()}</div>
+      <div class="player-chips-row">
+        <span class="player-chips-label">chips</span>
+        <span class="player-chips">${p.chips.toLocaleString()}</span>
+      </div>
       ${p.bet > 0 ? `<div class="player-bet-badge">bet: ${p.bet.toLocaleString()}</div>` : ''}
+      ${debtsHtml}
+      ${loanBtn}
     `;
     grid.appendChild(card);
   });
@@ -250,7 +314,7 @@ function renderActions() {
 
   if (!canCheck && showActions) {
     const callAmt = gameState.currentBet - (me ? me.bet : 0);
-    document.getElementById('btn-call').textContent = `↑ Call ${callAmt}`;
+    document.getElementById('btn-call').textContent = `Call ${callAmt}`;
   }
 }
 
@@ -280,7 +344,10 @@ function renderHistory() {
 }
 
 function toggleHistory() {
-  document.getElementById('history-panel').classList.toggle('open');
+  const panel = document.getElementById('history-panel');
+  panel.classList.toggle('open');
+  const header = panel.querySelector('.history-header');
+  header.setAttribute('aria-expanded', panel.classList.contains('open'));
 }
 
 // ====== PLAYER ACTIONS ======
@@ -312,8 +379,7 @@ function playerAction(action) {
     const input = document.getElementById('raise-amount');
     let amt = parseInt(input.value);
     if (!amt || amt <= 0) { showToast('Enter a valid raise amount'); return; }
-    // All-in protection
-    amt = Math.min(amt, me.chips);
+    amt = Math.min(amt, me.chips); // all-in protection
     me.chips -= amt;
     me.bet += amt;
     gameState.pot += amt;
@@ -331,7 +397,7 @@ function playerAction(action) {
 function bumpPot() {
   const el = document.getElementById('pot-display');
   el.classList.remove('bump');
-  void el.offsetWidth; // trigger reflow
+  void el.offsetWidth;
   el.classList.add('bump');
 }
 
@@ -363,7 +429,7 @@ function advanceTurn() {
     return;
   }
 
-  // Advance round after full orbit (simplified: when it comes back to the first non-folded player after dealer)
+  // Advance round
   const ri = ROUNDS.indexOf(gameState.round);
   if (next === gameState.myIdx && ri < ROUNDS.length - 1) {
     gameState.round = ROUNDS[ri + 1];
@@ -378,28 +444,96 @@ function advanceDealer() {
   gameState.dealerIdx = (gameState.dealerIdx + 1) % gameState.players.length;
 }
 
-// ====== ADD PLAYER (MODAL) ======
-function openAddPlayerModal() {
-  document.getElementById('add-player-modal').classList.add('open');
-  setTimeout(() => document.getElementById('new-player-name').focus(), 100);
-}
+// ====== NEW HAND ======
+function newHand() {
+  if (gameState.pot > 0) {
+    if (!confirm('There are still chips in the pot! Start new hand anyway?')) return;
+  }
+  gameState.handNum++;
+  gameState.round = 'Pre-flop';
+  gameState.currentBet = 0;
+  gameState.pot = 0;
+  gameState.players.forEach(p => { p.bet = 0; p.folded = false; });
+  advanceDealer();
 
-function closeAddPlayerModal() {
-  document.getElementById('add-player-modal').classList.remove('open');
-  document.getElementById('new-player-name').value = '';
-  document.getElementById('new-player-chips').value = gameState.startingChips;
-}
+  if (gameState.players.length >= 2) {
+    postStartingBid();
+    const bidPosterIdx = (gameState.dealerIdx + 1) % gameState.players.length;
+    gameState.currentPlayerIdx = (bidPosterIdx + 1) % gameState.players.length;
+  }
 
-function confirmAddPlayer() {
-  const name = document.getElementById('new-player-name').value.trim();
-  const chips = parseInt(document.getElementById('new-player-chips').value) || gameState.startingChips;
-  if (!name) { showToast('Enter a player name!'); return; }
-
-  gameState.players.push({ name, chips, bet: 0, folded: false, isMe: false });
-  addHistory(`${name} joined the table`);
+  addHistory(`Hand ${gameState.handNum} begins`);
   renderGame();
-  showToast(`${name} joined the table!`);
-  closeAddPlayerModal();
+  showToast(`Hand ${gameState.handNum} — bid posted`);
+}
+
+// ====== DEBT / LOAN SYSTEM ======
+let loanTargetIdx = -1;
+
+function openLoanModal(playerIdx) {
+  loanTargetIdx = playerIdx;
+  const player = gameState.players[playerIdx];
+  document.getElementById('loan-target-name').textContent = player.name;
+  document.getElementById('loan-amount').value = '';
+  document.getElementById('loan-modal').classList.add('open');
+  setTimeout(() => document.getElementById('loan-amount').focus(), 100);
+}
+
+function closeLoanModal() {
+  document.getElementById('loan-modal').classList.remove('open');
+  loanTargetIdx = -1;
+}
+
+function confirmLoan() {
+  if (loanTargetIdx < 0) return;
+  const me = gameState.players[gameState.myIdx];
+  const borrower = gameState.players[loanTargetIdx];
+  const amt = parseInt(document.getElementById('loan-amount').value);
+
+  if (!amt || amt <= 0) { showToast('Enter a valid amount'); return; }
+  if (amt > me.chips) { showToast('You don\'t have enough chips!'); return; }
+
+  // Transfer chips
+  me.chips -= amt;
+  borrower.chips += amt;
+
+  // Record debt on the borrower
+  const existing = borrower.debts.find(d => d.from === me.name);
+  if (existing) {
+    existing.amount += amt;
+  } else {
+    borrower.debts.push({ from: me.name, amount: amt });
+  }
+
+  addHistory(`${me.name} loaned ${amt} to ${borrower.name}`, amt);
+  showToast(`Loaned ${amt} chips to ${borrower.name}`);
+  closeLoanModal();
+  renderGame();
+}
+
+function collectDebt(borrowerIdx, debtIdx) {
+  const borrower = gameState.players[borrowerIdx];
+  const debt = borrower.debts[debtIdx];
+  if (!debt) return;
+
+  const me = gameState.players[gameState.myIdx];
+  if (debt.from !== me.name) { showToast('This isn\'t your debt to collect!'); return; }
+
+  if (borrower.chips < debt.amount) {
+    showToast(`${borrower.name} doesn't have enough chips (has ${borrower.chips}, owes ${debt.amount})`);
+    return;
+  }
+
+  // Transfer back
+  borrower.chips -= debt.amount;
+  me.chips += debt.amount;
+
+  addHistory(`${me.name} collected debt from ${borrower.name}`, debt.amount);
+  showToast(`Collected ${debt.amount} chips from ${borrower.name}`);
+
+  // Remove debt record
+  borrower.debts.splice(debtIdx, 1);
+  renderGame();
 }
 
 // ====== AWARD POT ======
@@ -443,46 +577,37 @@ function closeAwardModal() {
   document.getElementById('award-modal').classList.remove('open');
 }
 
-// ====== NEW HAND ======
-function newHand() {
-  if (gameState.pot > 0) {
-    if (!confirm('There are still chips in the pot! Start new hand anyway?')) return;
-  }
-  gameState.handNum++;
-  gameState.round = 'Pre-flop';
-  gameState.currentBet = 0;
-  gameState.pot = 0;
-  gameState.players.forEach(p => { p.bet = 0; p.folded = false; });
-  advanceDealer();
-
-  if (gameState.players.length >= 2) {
-    postBlinds();
-    // Set current player to UTG (after BB)
-    const utg = (gameState.dealerIdx + 3) % gameState.players.length;
-    gameState.currentPlayerIdx = utg;
-  }
-
-  addHistory(`Hand ${gameState.handNum} begins`);
-  renderGame();
-  showToast(`Hand ${gameState.handNum} — blinds posted`);
-}
-
 // ====== LEAVE GAME ======
 function leaveGame() {
   if (!confirm('Leave the game?')) return;
   showView('home-view', 'game-view');
 }
 
-// ====== COPY CODE ======
+// ====== COPY CODE / SHARE ======
 function copyCode() {
-  navigator.clipboard.writeText(gameState.code).catch(() => {});
+  const shareText = `Join my poker game! Code: ${gameState.code}\n${window.location.href}`;
+  if (navigator.share) {
+    navigator.share({
+      title: 'PokerChips.io Game',
+      text: `Join my poker game! Code: ${gameState.code}`,
+      url: window.location.href
+    }).catch(() => {
+      fallbackCopy(shareText);
+    });
+  } else {
+    fallbackCopy(gameState.code);
+  }
+}
+
+function fallbackCopy(text) {
+  navigator.clipboard.writeText(text).catch(() => {});
   showToast('Code copied: ' + gameState.code);
 }
 
 // ====== CONFETTI ======
 function launchConfetti() {
   const colors = ['#c9a84c', '#e8c96b', '#c0392b', '#2563b8', '#1a6b3a', '#f2ede0'];
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 30; i++) {
     const piece = document.createElement('div');
     piece.className = 'confetti-piece';
     piece.style.left = Math.random() * 100 + 'vw';
@@ -490,8 +615,8 @@ function launchConfetti() {
     piece.style.background = colors[Math.floor(Math.random() * colors.length)];
     piece.style.animationDuration = (1.2 + Math.random() * 1) + 's';
     piece.style.animationDelay = (Math.random() * 0.5) + 's';
-    piece.style.width = (6 + Math.random() * 6) + 'px';
-    piece.style.height = (6 + Math.random() * 6) + 'px';
+    piece.style.width = (5 + Math.random() * 5) + 'px';
+    piece.style.height = (5 + Math.random() * 5) + 'px';
     piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
     document.body.appendChild(piece);
     setTimeout(() => piece.remove(), 2500);
@@ -514,15 +639,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Make home view visible
   document.getElementById('home-view').classList.add('visible');
 
-  // Set default chips for add-player modal
-  const chipInput = document.getElementById('new-player-chips');
-  if (chipInput) chipInput.value = 2000;
+  // Update bid display when chips change
+  const chipsSelect = document.getElementById('start-chips');
+  if (chipsSelect) {
+    chipsSelect.addEventListener('change', updateBidDisplay);
+    updateBidDisplay();
+  }
 
-  // Handle Enter key on add player modal
-  const nameInput = document.getElementById('new-player-name');
-  if (nameInput) {
-    nameInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') confirmAddPlayer();
+  // Handle Enter key on loan modal
+  const loanInput = document.getElementById('loan-amount');
+  if (loanInput) {
+    loanInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') confirmLoan();
     });
   }
 
@@ -539,4 +667,12 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
     }
   });
+
+  // Prevent viewport zoom on double-tap (mobile)
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) e.preventDefault();
+    lastTouchEnd = now;
+  }, false);
 });

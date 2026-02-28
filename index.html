@@ -2,17 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>PokerChips.io — Play poker without the chips</title>
 
   <!-- SEO & Open Graph -->
-  <meta name="description" content="Create a game, share the link, and track bets in real time — all you need is a deck of cards. No account required." />
+  <meta name="description" content="Create a game, share the link, and track bets in real time — all you need is a deck of cards." />
   <meta property="og:title" content="PokerChips.io — Play without chips" />
-  <meta property="og:description" content="Free online poker chip tracker. Create a game, share the link, and play with friends using any physical deck." />
+  <meta property="og:description" content="Free poker chip tracker. Create a game, share the code, play with friends." />
   <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://pokerchips.io" />
-  <meta name="twitter:card" content="summary_large_image" />
   <meta name="theme-color" content="#0d2b1a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
   <!-- Favicon -->
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
@@ -30,25 +30,22 @@
   <!-- ====== NAVIGATION ====== -->
   <nav role="navigation" aria-label="Main navigation">
     <div class="logo">
-      <div class="logo-chips">
-        <span class="logo-chip" aria-hidden="true"></span>
-        <span class="logo-chip" aria-hidden="true"></span>
-        <span class="logo-chip" aria-hidden="true"></span>
+      <div class="logo-chips" aria-hidden="true">
+        <span class="logo-chip"></span>
+        <span class="logo-chip"></span>
+        <span class="logo-chip"></span>
       </div>
       <span class="logo-text">pokerchips<span>.io</span></span>
     </div>
-    <div class="nav-links">
-      <a href="#how-it-works">How to Play</a>
-      <a href="#" onclick="showToast('No account needed — just play!')">About</a>
-    </div>
+    <a href="#how-it-works">How to Play</a>
   </nav>
 
   <!-- ====== HOME VIEW ====== -->
   <main id="home-view" class="view" role="main">
     <section class="hero" aria-labelledby="hero-heading">
       <div class="hero-badge" aria-hidden="true">♠ No chips? No problem ♠</div>
-      <h1 id="hero-heading">Play poker without<br><em>the chips</em></h1>
-      <p>Create a game, share the link, and track bets in real time — all you need is a deck of cards.</p>
+      <h1 id="hero-heading">Play poker<br>without <em>the chips</em></h1>
+      <p>Create a game, share the code, and track bets — all you need is a deck of cards.</p>
 
       <div class="chip-row" aria-hidden="true">
         <div class="chip chip-w">$1</div>
@@ -72,27 +69,23 @@
             <label for="host-name">Your Name</label>
             <input type="text" id="host-name" placeholder="e.g. Johnny Cash" maxlength="24" autocomplete="off" />
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="start-chips">Starting Chips</label>
-              <select id="start-chips">
-                <option value="1000">1,000</option>
-                <option value="2000" selected>2,000</option>
-                <option value="5000">5,000</option>
-                <option value="10000">10,000</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="big-blind">Big Blind</label>
-              <select id="big-blind">
-                <option value="20">20</option>
-                <option value="40" selected>40</option>
-                <option value="100">100</option>
-                <option value="200">200</option>
-              </select>
+          <div class="form-group">
+            <label for="start-chips">Starting Chips</label>
+            <select id="start-chips">
+              <option value="1000">1,000</option>
+              <option value="2000" selected>2,000</option>
+              <option value="4000">4,000</option>
+              <option value="5000">5,000</option>
+              <option value="10000">10,000</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <div class="bid-display">
+              <span class="bid-display-label">Starting Bid</span>
+              <span class="bid-display-value" id="bid-display-value">50</span>
             </div>
           </div>
-          <button class="btn" id="btn-create-game" onclick="createGame()">♠ Create Game & Get Link</button>
+          <button class="btn" id="btn-create-game" onclick="createGame()">♠ Create Game</button>
         </div>
 
         <!-- JOIN TAB -->
@@ -115,27 +108,27 @@
 
     <section class="how-section" id="how-it-works" aria-labelledby="how-title">
       <div class="section-label">How it works</div>
-      <div class="section-title" id="how-title">Ready to play in seconds</div>
+      <div class="section-title" id="how-title">Ready in seconds</div>
       <div class="steps-grid">
         <div class="step-card">
           <div class="step-num" aria-hidden="true">01</div>
           <div class="step-title">Create a room</div>
-          <div class="step-desc">Set starting chips and blinds. No account required.</div>
+          <div class="step-desc">Pick your chip count. Bid is auto-set.</div>
         </div>
         <div class="step-card">
           <div class="step-num" aria-hidden="true">02</div>
-          <div class="step-title">Share the link</div>
-          <div class="step-desc">Send the game code or URL to your friends — anyone can join instantly.</div>
+          <div class="step-title">Share the code</div>
+          <div class="step-desc">Friends join with the 5-letter game code.</div>
         </div>
         <div class="step-card">
           <div class="step-num" aria-hidden="true">03</div>
-          <div class="step-title">Deal your cards</div>
-          <div class="step-desc">Use any physical deck. PokerChips.io handles all the chip tracking.</div>
+          <div class="step-title">Deal cards</div>
+          <div class="step-desc">Use any physical deck. We handle chips.</div>
         </div>
         <div class="step-card">
           <div class="step-num" aria-hidden="true">04</div>
-          <div class="step-title">Play & win</div>
-          <div class="step-desc">Fold, call, raise — and award the pot with one tap.</div>
+          <div class="step-title">Play & loan</div>
+          <div class="step-desc">Fold, raise, or loan chips to friends mid-game.</div>
         </div>
       </div>
     </section>
@@ -146,57 +139,55 @@
     <div class="game-header">
       <div>
         <div class="game-title" id="game-title-display">The Table</div>
-        <div class="game-meta" id="game-round-display">Round 1 • Pre-flop</div>
+        <div class="game-meta" id="game-round-display">Hand 1 · Pre-flop</div>
       </div>
       <div class="game-controls">
-        <div class="game-code-badge" onclick="copyCode()" id="game-code-display" role="button" aria-label="Copy game code" tabindex="0">CODE: —</div>
-        <button class="btn-small" id="btn-add-player" onclick="openAddPlayerModal()">+ Add Player</button>
-        <button class="btn-small" id="btn-leave" onclick="leaveGame()">✕ Leave</button>
+        <div class="game-code-badge" onclick="copyCode()" id="game-code-display" role="button" aria-label="Share game code" tabindex="0">—</div>
+        <button class="btn-small" id="btn-leave" onclick="leaveGame()">✕</button>
       </div>
     </div>
 
-    <div class="blinds-bar" aria-label="Blind levels">
-      <div class="blind-pill">
-        <span class="blind-dot sb" aria-hidden="true"></span>
-        <span class="blind-label">SB</span>
-        <span class="blind-value" id="sb-display">—</span>
+    <div class="info-bar" aria-label="Game info">
+      <div class="info-pill">
+        <span class="info-dot" style="background:var(--gold)" aria-hidden="true"></span>
+        <span class="info-label">Bid</span>
+        <span class="info-value" id="bid-value-display">—</span>
       </div>
-      <div class="blind-pill">
-        <span class="blind-dot bb" aria-hidden="true"></span>
-        <span class="blind-label">BB</span>
-        <span class="blind-value" id="bb-display">—</span>
-      </div>
-      <div class="blind-pill">
-        <span class="blind-dot" style="background:var(--chip-red)" aria-hidden="true"></span>
-        <span class="blind-label">Hand</span>
-        <span class="blind-value" id="hand-num-display">1</span>
+      <div class="info-pill">
+        <span class="info-dot" style="background:var(--chip-red)" aria-hidden="true"></span>
+        <span class="info-label">Hand</span>
+        <span class="info-value" id="hand-num-display">1</span>
       </div>
     </div>
 
     <div class="pot-display" aria-label="Current pot">
-      <div class="pot-label">♦ Current Pot ♦</div>
+      <div class="pot-label">♦ Pot ♦</div>
       <div class="pot-amount" id="pot-display">0</div>
     </div>
 
-    <div class="players-grid" id="players-grid" role="list" aria-label="Players at the table"></div>
+    <div class="players-grid" id="players-grid" role="list" aria-label="Players"></div>
 
     <div class="action-bar" id="action-bar" aria-label="Game actions">
       <div class="turn-label" id="turn-label">Waiting for players...</div>
-      <button class="action-btn fold" id="btn-fold" onclick="playerAction('fold')" style="display:none" aria-label="Fold">✕ Fold</button>
-      <button class="action-btn check-call" id="btn-check" onclick="playerAction('check')" style="display:none" aria-label="Check">● Check</button>
-      <button class="action-btn check-call" id="btn-call" onclick="playerAction('call')" style="display:none" aria-label="Call">↑ Call</button>
-      <div class="raise-input-wrap" id="raise-wrap" style="display:none">
-        <input type="number" id="raise-amount" placeholder="Raise amount" min="1" aria-label="Raise amount" />
-        <button class="action-btn raise" onclick="playerAction('raise')" aria-label="Raise">↑↑ Raise</button>
+      <div class="action-btns-row">
+        <button class="action-btn fold" id="btn-fold" onclick="playerAction('fold')" style="display:none" aria-label="Fold">✕ Fold</button>
+        <button class="action-btn check-call" id="btn-check" onclick="playerAction('check')" style="display:none" aria-label="Check">Check</button>
+        <button class="action-btn check-call" id="btn-call" onclick="playerAction('call')" style="display:none" aria-label="Call">Call</button>
       </div>
-      <button class="btn-small" id="btn-award" onclick="openAwardModal()" style="display:none">🏆 Award Pot</button>
-      <button class="btn-small" id="btn-new-hand" onclick="newHand()" style="display:none">🔄 New Hand</button>
+      <div class="raise-input-wrap" id="raise-wrap" style="display:none">
+        <input type="number" id="raise-amount" placeholder="Amount" min="1" aria-label="Raise amount" />
+        <button class="action-btn raise" onclick="playerAction('raise')" aria-label="Raise">Raise</button>
+      </div>
+      <div class="utility-btns-row">
+        <button class="btn-small" id="btn-award" onclick="openAwardModal()" style="display:none">🏆 Award</button>
+        <button class="btn-small" id="btn-new-hand" onclick="newHand()" style="display:none">🔄 New Hand</button>
+      </div>
     </div>
 
     <!-- HAND HISTORY -->
     <div class="history-panel" id="history-panel">
       <div class="history-header" onclick="toggleHistory()" role="button" aria-expanded="false" tabindex="0">
-        <span class="history-header-title">📋 Hand History</span>
+        <span class="history-header-title">📋 History</span>
         <span class="history-toggle">▼</span>
       </div>
       <div class="history-body">
@@ -206,36 +197,34 @@
   </div>
 
   <footer>
-    © 2026 pokerchips.io — Play without chips · 
+    © 2026 pokerchips.io · 
     <a href="https://github.com/sumitsah03690-bit/poker" target="_blank" rel="noopener">GitHub</a>
   </footer>
 </div>
 
 <!-- ====== AWARD MODAL ====== -->
-<div class="modal-overlay" id="award-modal" role="dialog" aria-modal="true" aria-labelledby="award-modal-title">
+<div class="modal-overlay" id="award-modal" role="dialog" aria-modal="true" aria-labelledby="award-title">
   <div class="modal">
-    <h3 id="award-modal-title">🏆 Award the Pot</h3>
-    <p style="color:var(--muted); font-size:0.9rem; margin-bottom:16px;">Who won this hand?</p>
+    <h3 id="award-title">🏆 Award the Pot</h3>
+    <p style="color:var(--muted); font-size:0.85rem; margin-bottom:14px;">Who won this hand?</p>
     <div id="winner-options"></div>
     <div class="winner-chips-display" id="pot-award-display"></div>
     <button class="btn btn-outline" style="margin-top:8px" onclick="closeAwardModal()">Cancel</button>
   </div>
 </div>
 
-<!-- ====== ADD PLAYER MODAL ====== -->
-<div class="modal-overlay" id="add-player-modal" role="dialog" aria-modal="true" aria-labelledby="add-player-title">
+<!-- ====== LOAN MODAL ====== -->
+<div class="modal-overlay" id="loan-modal" role="dialog" aria-modal="true" aria-labelledby="loan-title">
   <div class="modal">
-    <h3 id="add-player-title">➕ Add Player</h3>
+    <h3 id="loan-title">💰 Give Loan</h3>
+    <p style="color:var(--muted); font-size:0.85rem; margin-bottom:14px;">Loan chips to <strong id="loan-target-name" style="color:var(--white)">—</strong></p>
     <div class="form-group">
-      <label for="new-player-name">Player Name</label>
-      <input type="text" id="new-player-name" placeholder="e.g. Wild Card" maxlength="24" autocomplete="off" />
+      <label for="loan-amount">Amount</label>
+      <input type="number" id="loan-amount" placeholder="e.g. 500" min="1" />
     </div>
-    <div class="form-group">
-      <label for="new-player-chips">Starting Chips</label>
-      <input type="number" id="new-player-chips" value="2000" min="1" />
-    </div>
-    <button class="btn" onclick="confirmAddPlayer()">Add to Table</button>
-    <button class="btn btn-outline" style="margin-top:8px" onclick="closeAddPlayerModal()">Cancel</button>
+    <p style="color:var(--muted); font-size:0.72rem; margin-bottom:14px; font-family:'DM Mono',monospace; letter-spacing:0.04em;">You can collect this debt back any time they have enough chips.</p>
+    <button class="btn" onclick="confirmLoan()">Loan Chips</button>
+    <button class="btn btn-outline" style="margin-top:8px" onclick="closeLoanModal()">Cancel</button>
   </div>
 </div>
 
