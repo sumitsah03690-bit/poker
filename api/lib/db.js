@@ -1,27 +1,23 @@
-// MongoDB connection singleton for Vercel serverless functions
+// MongoDB connection singleton for Vercel serverless functions.
+// Reuses connection across warm invocations.
 const { MongoClient } = require('mongodb');
 
-const uri = process.env.MONGODB_URI;
-if (!uri) throw new Error('MONGODB_URI environment variable not set');
+let client = null;
+let db = null;
 
-let cachedClient = null;
-let cachedDb = null;
-
-async function connectToDb() {
-  if (cachedDb) return cachedDb;
-
-  if (!cachedClient) {
-    cachedClient = new MongoClient(uri);
-    await cachedClient.connect();
-  }
-
-  cachedDb = cachedClient.db('poker');
-  return cachedDb;
+async function getDB() {
+  if (db) return db;
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI env var not set');
+  client = new MongoClient(uri);
+  await client.connect();
+  db = client.db('poker');
+  return db;
 }
 
 async function getGamesCollection() {
-  const db = await connectToDb();
-  return db.collection('games');
+  const database = await getDB();
+  return database.collection('games');
 }
 
-module.exports = { connectToDb, getGamesCollection };
+module.exports = { getGamesCollection };

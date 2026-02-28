@@ -1,8 +1,7 @@
 {
   "name": "pokerchips-io",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
-  "description": "PokerChips.io — Play poker without the chips",
   "dependencies": {
     "mongodb": "^6.3.0"
   }

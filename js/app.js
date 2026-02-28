@@ -1,313 +1,274 @@
-// ============================================================
-//  PokerChips.io — Free Turn, Own-Player Controls
-//  Anyone acts anytime, but only for themselves
-// ============================================================
+/* ═══════════════════════════════════════════════════════
+   PokerChips.io — Client v4 (Clean Rebuild)
+   Free turn · Own-player only · Dark mode
+   ═══════════════════════════════════════════════════════ */
 
 let gameCode = '';
-let myName = '';
+let myName   = '';
+let isHost   = false;
 let gameData = null;
-let pollTimer = null;
-let raiseAmount = 0;
-let isHost = false;
+let pollId   = null;
+let raiseAmt = 0;
 
 const ROUNDS = ['Pre-flop', 'Flop', 'Turn', 'River', 'Showdown'];
 
-// ====== API ======
-async function apiPost(ep, body) {
+/* ── API helpers ───────────────────────────────── */
+async function post(ep, body) {
   try {
-    const r = await fetch(`/api/${ep}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const r = await fetch(`/api/${ep}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
     const d = await r.json();
-    if (!r.ok) { showToast(d.error || 'Error'); return null; }
+    if (!r.ok) { toast(d.error || 'Error'); return null; }
     return d;
-  } catch (e) { showToast('Connection error'); return null; }
+  } catch(e) { toast('Connection error'); return null; }
 }
 
-async function apiGet(ep) {
-  try { const r = await fetch(`/api/${ep}`); if (!r.ok) return null; return await r.json(); }
-  catch (e) { return null; }
+async function get(ep) {
+  try { const r = await fetch(`/api/${ep}`); return r.ok ? await r.json() : null; }
+  catch(e) { return null; }
 }
 
-// ====== POLLING ======
-function startPolling() { stopPolling(); poll(); pollTimer = setInterval(poll, 2000); }
-function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+/* ── Polling ───────────────────────────────────── */
+function startPoll() { stopPoll(); doPoll(); pollId = setInterval(doPoll, 2000); }
+function stopPoll()  { if (pollId) { clearInterval(pollId); pollId = null; } }
 
-async function poll() {
+async function doPoll() {
   if (!gameCode) return;
-  const d = await apiGet(`game-state?code=${gameCode}`);
+  const d = await get(`game-state?code=${gameCode}`);
   if (d && d.game) {
-    const oldRound = gameData ? gameData.roundIdx : -1;
+    const oldR = gameData ? gameData.roundIdx : -1;
     gameData = d.game;
-    renderGame();
-    if (d.game.roundMessage && d.game.roundIdx !== oldRound) {
-      showTableMessage(d.game.roundMessage);
-    }
+    render();
+    if (d.game.roundMessage && d.game.roundIdx !== oldR) tableMsg(d.game.roundMessage);
   }
 }
 
-// ====== PARTICLES ======
-function spawnSuitParticles() {
-  const suits = ['♠', '♥', '♦', '♣'];
-  for (let i = 0; i < 8; i++) {
-    const el = document.createElement('span');
-    el.className = 'suit-particle';
-    el.textContent = suits[Math.floor(Math.random() * suits.length)];
-    el.style.left = Math.random() * 100 + 'vw';
-    el.style.animationDuration = (15 + Math.random() * 20) + 's';
-    el.style.animationDelay = (Math.random() * 15) + 's';
-    document.body.appendChild(el);
-  }
+/* ── Views ─────────────────────────────────────── */
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('visible'));
+  document.getElementById(id).classList.add('visible');
 }
 
-// ====== TABS & VIEWS ======
 function switchTab(tab, e) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById(`tab-${tab}`).classList.add('active');
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-body').forEach(b => b.classList.add('hidden'));
+  document.getElementById(`tab-${tab}`).classList.remove('hidden');
   if (e && e.target) e.target.classList.add('active');
 }
 
-function showView(show, hide) {
-  const s = document.getElementById(show), h = document.getElementById(hide);
-  h.classList.remove('visible'); h.classList.add('hidden');
-  setTimeout(() => { s.classList.remove('hidden'); s.classList.add('visible'); }, 150);
-}
-
-function updateBidDisplay() {
-  const el = document.getElementById('bid-display-value');
+function updateBid() {
+  const el = document.getElementById('bid-display');
   if (el) el.textContent = Math.round(parseInt(document.getElementById('start-chips').value) / 40);
 }
 
-// ====== CREATE ======
+/* ── Create / Join ─────────────────────────────── */
 async function createGame() {
   const name = document.getElementById('host-name').value.trim();
-  if (!name) { showToast('Enter your name!'); return; }
-  showToast('Creating...');
-  const d = await apiPost('create-game', { name, chips: parseInt(document.getElementById('start-chips').value) });
+  if (!name) return toast('Enter your name');
+  toast('Creating...');
+  const d = await post('create-game', { name, chips: parseInt(document.getElementById('start-chips').value) });
   if (!d) return;
   gameCode = d.code; myName = name; gameData = d.game; isHost = true;
-  localStorage.setItem('poker_name', myName);
-  localStorage.setItem('poker_code', gameCode);
-  localStorage.setItem('poker_host', '1');
-  showView('game-view', 'home-view');
-  renderGame(); startPolling();
-  showToast('Share code: ' + gameCode);
+  save(); showView('game-view'); render(); startPoll();
+  toast('Share code: ' + gameCode);
 }
 
-// ====== JOIN ======
 async function joinGame() {
   const name = document.getElementById('join-name').value.trim();
   const code = document.getElementById('game-code-input').value.trim().toUpperCase();
-  if (!name) { showToast('Enter your name!'); return; }
-  if (!code) { showToast('Enter a code!'); return; }
-  showToast('Joining...');
-  const d = await apiPost('join-game', { code, name });
+  if (!name) return toast('Enter your name');
+  if (!code) return toast('Enter a code');
+  toast('Joining...');
+  const d = await post('join-game', { code, name });
   if (!d) return;
   gameCode = code; myName = name; gameData = d.game; isHost = false;
-  localStorage.setItem('poker_name', myName);
-  localStorage.setItem('poker_code', gameCode);
-  localStorage.removeItem('poker_host');
-  showView('game-view', 'home-view');
-  renderGame(); startPolling();
-  showToast('Joined!');
+  save(); showView('game-view'); render(); startPoll();
+  toast('Joined!');
 }
 
-// ====== SEND ACTION ======
-async function sendAction(action, extra = {}) {
-  const d = await apiPost('action', { code: gameCode, action, playerName: myName, ...extra });
-  if (d && d.game) { gameData = d.game; renderGame(); }
+function save() {
+  localStorage.setItem('pk_name', myName);
+  localStorage.setItem('pk_code', gameCode);
+  localStorage.setItem('pk_host', isHost ? '1' : '');
+}
+
+/* ── Action helper ─────────────────────────────── */
+async function act(action, extra = {}) {
+  const d = await post('action', { code: gameCode, action, playerName: myName, ...extra });
+  if (d && d.game) { gameData = d.game; render(); }
   return d;
 }
 
-// ====== RENDER ======
-function renderGame() {
+/* ══════════════════════════════════════════════════
+   RENDER
+   ══════════════════════════════════════════════════ */
+function render() {
   if (!gameData) return;
-
-  // Check if I'm host
   if (gameData.hostName && gameData.hostName.toLowerCase() === myName.toLowerCase()) isHost = true;
 
-  document.getElementById('game-code-display').textContent = gameCode;
-  document.getElementById('game-hand-display').textContent = 'Hand ' + gameData.handNum;
+  // Top bar
+  document.getElementById('code-pill').textContent = gameCode;
+  document.getElementById('hand-badge').textContent = 'Hand ' + gameData.handNum;
+
+  // Stats
   document.getElementById('pot-display').textContent = gameData.pot.toLocaleString();
+  document.getElementById('call-display').textContent = (gameData.callAmount || 0).toLocaleString();
 
-  // Call amount
-  const callEl = document.getElementById('call-amount-display');
-  if (callEl) callEl.textContent = (gameData.callAmount || 0).toLocaleString();
+  // Rounds
+  const rc = document.getElementById('round-pills');
+  rc.innerHTML = '';
+  ROUNDS.forEach((n, i) => {
+    const p = document.createElement('span');
+    p.className = 'rpill' + (i === gameData.roundIdx ? ' active' : '') + (i < gameData.roundIdx ? ' done' : '');
+    p.textContent = n;
+    rc.appendChild(p);
+  });
 
-  renderRoundPills();
+  // Players
   renderPlayers();
+  // Log
   renderLog();
-
-  // Host controls visibility
-  const hostCtrls = document.getElementById('host-controls');
-  if (hostCtrls) hostCtrls.style.display = isHost ? '' : 'none';
-
+  // Host bar
+  document.getElementById('host-bar').style.display = isHost ? '' : 'none';
   // Showdown
-  const showdownEl = document.getElementById('showdown-bar');
-  if (showdownEl) showdownEl.style.display = gameData.roundIdx === 4 ? '' : 'none';
+  document.getElementById('showdown-bar').style.display = gameData.roundIdx === 4 ? '' : 'none';
 
-  // My action bar
+  // My action bar: only visible if I haven't folded
   const me = gameData.players.find(p => p.name.toLowerCase() === myName.toLowerCase());
-  const actionBar = document.getElementById('my-action-bar');
+  const bar = document.getElementById('my-actions');
   if (me && !me.folded) {
-    actionBar.style.display = '';
-    // Update call button text
-    const myCallAmt = (gameData.callAmount || 0) - me.bet;
+    bar.style.display = '';
+    const owed = (gameData.callAmount || 0) - me.bet;
     const callBtn = document.getElementById('btn-call');
     const checkBtn = document.getElementById('btn-check');
-    if (myCallAmt > 0) {
-      callBtn.style.display = '';
-      callBtn.textContent = `Call ${myCallAmt}`;
+    if (owed > 0) {
+      callBtn.style.display = ''; callBtn.textContent = `Call ${owed}`;
       checkBtn.style.display = 'none';
     } else {
-      callBtn.style.display = 'none';
-      checkBtn.style.display = '';
+      callBtn.style.display = 'none'; checkBtn.style.display = '';
     }
   } else {
-    actionBar.style.display = 'none';
+    bar.style.display = 'none';
   }
 }
 
-function renderRoundPills() {
-  const c = document.getElementById('round-pills');
-  c.innerHTML = '';
-  ROUNDS.forEach((name, i) => {
-    const pill = document.createElement('span');
-    pill.className = 'round-pill' + (i === gameData.roundIdx ? ' active' : '') + (i < gameData.roundIdx ? ' done' : '');
-    pill.textContent = name;
-    c.appendChild(pill);
-  });
-}
-
 function renderPlayers() {
-  const grid = document.getElementById('players-grid');
-  grid.innerHTML = '';
-
+  const g = document.getElementById('players-grid');
+  g.innerHTML = '';
   gameData.players.forEach((p, i) => {
-    const isDealer = i === gameData.dealerIdx;
     const isMe = p.name.toLowerCase() === myName.toLowerCase();
-    const card = document.createElement('div');
-    card.className = 'player-card' + (p.folded ? ' folded' : '');
+    const el = document.createElement('div');
+    el.className = 'pcard' + (p.folded ? ' folded' : '');
 
-    const initial = p.name.charAt(0).toUpperCase();
-
-    // Debts
-    let debtsHtml = '';
-    if (p.debts && p.debts.length > 0) {
-      debtsHtml = '<div class="debt-section">';
+    let debtHtml = '';
+    if (p.debts && p.debts.length) {
+      debtHtml = '<div class="debt">';
       p.debts.forEach(d => {
-        const canCollect = d.from.toLowerCase() === myName.toLowerCase() && p.chips >= d.amount;
-        debtsHtml += `<div class="debt-badge">
-          <span class="debt-text">owes ${d.from}: ${d.amount}</span>
-          ${canCollect ? `<button class="debt-collect-btn" onclick="doCollectDebt('${p.name}')">Collect</button>` : ''}
-        </div>`;
+        const can = d.from.toLowerCase() === myName.toLowerCase() && p.chips >= d.amount;
+        debtHtml += `<div class="debt-row"><span>owes ${d.from}: ${d.amount}</span>${can ? `<button class="debt-collect" onclick="collectDebt('${p.name}')">Collect</button>` : ''}</div>`;
       });
-      debtsHtml += '</div>';
+      debtHtml += '</div>';
     }
 
-    // Loan button
-    let loanBtn = '';
+    let loanHtml = '';
     if (!isMe && p.chips < (gameData.startingBid || 50)) {
-      loanBtn = `<button class="player-loan-btn" onclick="openLoanModal('${p.name}')">💰 Loan</button>`;
+      loanHtml = `<button class="loan-btn" onclick="openLoan('${p.name}')">💰 Loan</button>`;
     }
 
-    card.innerHTML = `
-      <div class="player-top">
-        <div class="player-avatar">${initial}${isDealer ? '<span class="dealer-chip">D</span>' : ''}</div>
-        <div><div class="player-name">${p.name}${isMe ? ' <span class="player-you-tag">(you)</span>' : ''}</div></div>
+    el.innerHTML = `
+      <div class="pcard-top">
+        <div class="avatar">${p.name[0].toUpperCase()}${i === gameData.dealerIdx ? '<span class="dealer-d">D</span>' : ''}</div>
+        <div><span class="pname">${p.name}</span>${isMe ? ' <span class="you-tag">(you)</span>' : ''}</div>
       </div>
-      <div class="player-chips-row">
-        <span class="player-chips-label">chips</span>
-        <span class="player-chips">${p.chips.toLocaleString()}</span>
+      <div class="pchips-row">
+        <span class="pchips-label">chips</span>
+        <span class="pchips">${p.chips.toLocaleString()}</span>
       </div>
-      ${p.bet > 0 ? `<div class="player-bet-badge">bet: ${p.bet.toLocaleString()}</div>` : ''}
-      <div class="player-folded-tag">FOLDED</div>
-      ${debtsHtml}
-      ${loanBtn}
+      ${p.bet > 0 ? `<span class="pbet">bet ${p.bet.toLocaleString()}</span>` : ''}
+      <span class="fold-tag">FOLDED</span>
+      ${debtHtml}${loanHtml}
     `;
-    grid.appendChild(card);
+    g.appendChild(el);
   });
 }
 
 function renderLog() {
   const el = document.getElementById('activity-log');
-  if (!el || !gameData) return;
   el.innerHTML = '';
   if (!gameData.history || !gameData.history.length) {
-    el.innerHTML = '<div class="log-entry"><span class="l-text" style="color:var(--muted)">No actions yet</span></div>';
+    el.innerHTML = '<div class="log-row"><span class="log-x" style="color:var(--text-dim)">No activity yet</span></div>';
     return;
   }
   gameData.history.slice(0, 20).forEach(e => {
-    const div = document.createElement('div');
-    div.className = 'log-entry';
-    div.innerHTML = `<span class="l-time">${e.time}</span><span class="l-text">${e.text}</span>${e.amount != null ? `<span class="l-amt">${Number(e.amount).toLocaleString()}</span>` : ''}`;
-    el.appendChild(div);
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span class="log-t">${e.time}</span><span class="log-x">${e.text}</span>${e.amount != null ? `<span class="log-a">${Number(e.amount).toLocaleString()}</span>` : ''}`;
+    el.appendChild(row);
   });
 }
 
-function showTableMessage(msg) {
-  const el = document.getElementById('table-message');
+function tableMsg(msg) {
+  const el = document.getElementById('table-msg');
   if (!msg) { el.classList.remove('visible'); return; }
-  el.textContent = msg;
-  el.classList.add('visible');
-  clearTimeout(el._timer);
-  el._timer = setTimeout(() => el.classList.remove('visible'), 6000);
+  el.textContent = msg; el.classList.add('visible');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('visible'), 6000);
 }
 
-// ====== MY ACTIONS (free turn — I act for myself only) ======
+/* ── Player actions (only for YOURSELF) ────────── */
 async function doFold() {
   if (!confirm('Fold?')) return;
-  const d = await sendAction('fold');
+  const d = await act('fold');
   if (d) {
-    const active = d.game.players.filter(x => !x.folded);
-    if (active.length === 1) { showToast(`${active[0].name} wins! 🏆`); launchConfetti(); }
-    else showToast('You folded');
+    const a = d.game.players.filter(x => !x.folded);
+    if (a.length === 1) { toast(`${a[0].name} wins! 🏆`); confetti(); }
+    else toast('You folded');
   }
 }
 
 async function doCall() {
-  const d = await sendAction('call');
-  if (d) { bumpPot(); showToast('Done!'); }
+  const d = await act('call');
+  if (d) { bumpPot(); toast('Done!'); }
 }
 
+/* ── Raise ─────────────────────────────────────── */
 function openRaisePanel() {
-  raiseAmount = 0;
+  raiseAmt = 0;
   const me = gameData.players.find(p => p.name.toLowerCase() === myName.toLowerCase());
-  document.getElementById('raise-max-info').textContent = me ? `Max: ${me.chips.toLocaleString()}` : '';
-  document.getElementById('raise-amount-display').textContent = '0';
-  document.getElementById('raise-manual-input').value = '';
-  document.getElementById('raise-panel').classList.add('visible');
+  document.getElementById('raise-max').textContent = me ? `max ${me.chips.toLocaleString()}` : '';
+  document.getElementById('raise-big').textContent = '0';
+  document.getElementById('raise-input').value = '';
+  document.getElementById('raise-sheet').classList.add('open');
 }
 
-function closeRaise() { document.getElementById('raise-panel').classList.remove('visible'); }
+function closeRaise() { document.getElementById('raise-sheet').classList.remove('open'); }
 
-function adjustRaise(delta) {
+function adjRaise(d) {
   const me = gameData.players.find(p => p.name.toLowerCase() === myName.toLowerCase());
   if (!me) return;
-  raiseAmount = Math.max(0, Math.min(raiseAmount + delta, me.chips));
-  document.getElementById('raise-amount-display').textContent = raiseAmount.toLocaleString();
-  document.getElementById('raise-manual-input').value = raiseAmount;
+  raiseAmt = Math.max(0, Math.min(raiseAmt + d, me.chips));
+  document.getElementById('raise-big').textContent = raiseAmt.toLocaleString();
+  document.getElementById('raise-input').value = raiseAmt;
 }
 
 function setRaiseManual() {
   const me = gameData.players.find(p => p.name.toLowerCase() === myName.toLowerCase());
   if (!me) return;
-  const v = parseInt(document.getElementById('raise-manual-input').value) || 0;
-  raiseAmount = Math.max(0, Math.min(v, me.chips));
-  document.getElementById('raise-amount-display').textContent = raiseAmount.toLocaleString();
+  raiseAmt = Math.max(0, Math.min(parseInt(document.getElementById('raise-input').value) || 0, me.chips));
+  document.getElementById('raise-big').textContent = raiseAmt.toLocaleString();
 }
 
 function raiseAllIn() {
   const me = gameData.players.find(p => p.name.toLowerCase() === myName.toLowerCase());
   if (!me) return;
-  raiseAmount = me.chips;
-  document.getElementById('raise-amount-display').textContent = raiseAmount.toLocaleString();
-  document.getElementById('raise-manual-input').value = raiseAmount;
+  raiseAmt = me.chips;
+  document.getElementById('raise-big').textContent = raiseAmt.toLocaleString();
+  document.getElementById('raise-input').value = raiseAmt;
 }
 
 async function confirmRaise() {
-  if (raiseAmount <= 0) { showToast('Enter an amount'); return; }
-  const d = await sendAction('raise', { amount: raiseAmount });
-  if (d) { bumpPot(); showToast(`Raised ${raiseAmount}`); closeRaise(); }
+  if (raiseAmt <= 0) return toast('Enter an amount');
+  const d = await act('raise', { amount: raiseAmt });
+  if (d) { bumpPot(); toast(`Raised ${raiseAmt}`); closeRaise(); }
 }
 
 function bumpPot() {
@@ -315,162 +276,151 @@ function bumpPot() {
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 }
 
-// ====== HOST: TAKE FROM POT ======
+/* ── Host controls ─────────────────────────────── */
+async function advanceRound() {
+  const d = await act('advance-round');
+  if (d && d.game.roundMessage) { tableMsg(d.game.roundMessage); toast(d.game.roundMessage); }
+}
+
+async function resetCallAmount() {
+  const v = prompt('Set call amount to:', gameData.callAmount || 0);
+  if (v === null) return;
+  await act('reset-call', { amount: parseInt(v) || 0 });
+  toast('Call amount updated');
+}
+
+async function newHand() {
+  if (gameData.pot > 0 && !confirm('Chips still in pot! New hand?')) return;
+  const d = await act('new-hand');
+  if (d) toast(`Hand ${d.game.handNum}`);
+}
+
+/* ── Take from pot (modal) ─────────────────────── */
 function openTakeModal() {
-  if (!gameData || gameData.pot <= 0) { showToast('Pot is empty'); return; }
-  document.getElementById('take-pot-max').textContent = gameData.pot.toLocaleString();
-  // Populate player select
-  const sel = document.getElementById('take-player-select');
+  if (!gameData || gameData.pot <= 0) return toast('Pot is empty');
+  document.getElementById('take-max').textContent = gameData.pot.toLocaleString();
+  const sel = document.getElementById('take-who');
   sel.innerHTML = '';
-  gameData.players.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p.name;
-    opt.textContent = p.name;
-    sel.appendChild(opt);
-  });
-  document.getElementById('take-amount-input').value = '';
+  gameData.players.forEach(p => { const o = document.createElement('option'); o.value = p.name; o.textContent = p.name; sel.appendChild(o); });
+  document.getElementById('take-amt').value = '';
   document.getElementById('take-modal').classList.add('open');
 }
 
-function closeTakeModal() { document.getElementById('take-modal').classList.remove('open'); }
-
-async function confirmTakeFromPot() {
-  const name = document.getElementById('take-player-select').value;
-  const amt = parseInt(document.getElementById('take-amount-input').value);
-  if (!name || !amt || amt <= 0) { showToast('Enter valid details'); return; }
-  const d = await sendAction('take-from-pot', { targetName: name, amount: amt });
-  if (d) { showToast(`${amt} returned to ${name}`); closeTakeModal(); }
+async function confirmTake() {
+  const who = document.getElementById('take-who').value;
+  const amt = parseInt(document.getElementById('take-amt').value);
+  if (!who || !amt || amt <= 0) return toast('Fill in the details');
+  const d = await act('take-from-pot', { targetName: who, amount: amt });
+  if (d) { toast(`${amt} → ${who}`); closeModal('take-modal'); }
 }
 
-// ====== HOST: RESET CALL ======
-async function resetCallAmount() {
-  const val = prompt('Set call amount to:', gameData.callAmount || 0);
-  if (val === null) return;
-  const d = await sendAction('reset-call', { amount: parseInt(val) || 0 });
-  if (d) showToast('Call reset!');
-}
-
-// ====== HOST: ADVANCE ROUND ======
-async function advanceRound() {
-  const d = await sendAction('advance-round');
-  if (d && d.game) {
-    if (d.game.roundMessage) { showTableMessage(d.game.roundMessage); showToast(d.game.roundMessage); }
-  }
-}
-
-// ====== HOST: NEW HAND ======
-async function newHand() {
-  if (gameData && gameData.pot > 0 && !confirm('Chips still in pot! New hand?')) return;
-  const d = await sendAction('new-hand');
-  if (d) showToast(`Hand ${d.game.handNum}`);
-}
-
-// ====== AWARD POT ======
+/* ── Award pot (modal) ─────────────────────────── */
 function openAwardModal() {
-  if (!gameData || gameData.pot <= 0) { showToast('Pot is empty'); return; }
-  document.getElementById('award-modal').classList.add('open');
-  const opts = document.getElementById('winner-options');
-  opts.innerHTML = '';
-  document.getElementById('pot-award-display').textContent = gameData.pot.toLocaleString() + ' chips';
+  if (!gameData || gameData.pot <= 0) return toast('Pot is empty');
+  document.getElementById('pot-award-label').textContent = gameData.pot.toLocaleString() + ' chips';
+  const btns = document.getElementById('winner-btns');
+  btns.innerHTML = '';
   gameData.players.filter(p => !p.folded).forEach(p => {
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-outline';
-    btn.style.marginBottom = '8px';
-    btn.textContent = p.name;
-    btn.onclick = async () => {
-      const d = await sendAction('award-pot', { targetName: p.name });
-      if (d) { showToast(`${p.name} wins! 🏆`); launchConfetti(); closeAwardModal(); }
+    const b = document.createElement('button');
+    b.className = 'btn-primary'; b.style.marginBottom = '8px';
+    b.textContent = p.name;
+    b.onclick = async () => {
+      const d = await act('award-pot', { targetName: p.name });
+      if (d) { toast(`${p.name} wins! 🏆`); confetti(); closeModal('award-modal'); }
     };
-    opts.appendChild(btn);
+    btns.appendChild(b);
   });
+  document.getElementById('award-modal').classList.add('open');
 }
-function closeAwardModal() { document.getElementById('award-modal').classList.remove('open'); }
 
-// ====== LOAN / DEBT ======
-let loanTargetName = '';
+/* ── Loan / Debt ──────────────────────────────── */
+let loanTarget = '';
 
-function openLoanModal(name) {
-  loanTargetName = name;
-  document.getElementById('loan-target-name').textContent = name;
-  document.getElementById('loan-amount').value = '';
+function openLoan(name) {
+  loanTarget = name;
+  document.getElementById('loan-who').textContent = name;
+  document.getElementById('loan-amt').value = '';
   document.getElementById('loan-modal').classList.add('open');
 }
-function closeLoanModal() { document.getElementById('loan-modal').classList.remove('open'); }
 
 async function confirmLoan() {
-  const amt = parseInt(document.getElementById('loan-amount').value);
-  if (!amt || amt <= 0) { showToast('Enter amount'); return; }
-  const d = await sendAction('loan', { targetName: loanTargetName, amount: amt });
-  if (d) { showToast('Loaned!'); closeLoanModal(); }
+  const amt = parseInt(document.getElementById('loan-amt').value);
+  if (!amt || amt <= 0) return toast('Enter an amount');
+  const d = await act('loan', { targetName: loanTarget, amount: amt });
+  if (d) { toast('Loaned!'); closeModal('loan-modal'); }
 }
 
-async function doCollectDebt(borrowerName) {
-  const d = await sendAction('collect-debt', { targetName: borrowerName });
-  if (d) showToast('Collected!');
+async function collectDebt(borrowerName) {
+  const d = await act('collect-debt', { targetName: borrowerName });
+  if (d) toast('Collected!');
 }
 
-// ====== LEAVE / SHARE ======
+/* ── Modals helper ─────────────────────────────── */
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+/* ── Leave / Share ─────────────────────────────── */
 function leaveGame() {
   if (!confirm('Leave?')) return;
-  stopPolling(); gameCode = ''; gameData = null;
-  localStorage.removeItem('poker_code');
-  showView('home-view', 'game-view');
+  stopPoll(); gameCode = ''; gameData = null;
+  localStorage.removeItem('pk_code');
+  showView('home-view');
 }
 
 function copyCode() {
-  const text = `Join my poker game! Code: ${gameCode}\n${window.location.origin}`;
-  if (navigator.share) navigator.share({ title: 'PokerChips.io', text }).catch(() => fallbackCopy());
-  else fallbackCopy();
+  const txt = `Join my poker game! Code: ${gameCode}\n${location.origin}`;
+  if (navigator.share) navigator.share({ title:'PokerChips.io', text:txt }).catch(() => fallback());
+  else fallback();
 }
-function fallbackCopy() { navigator.clipboard.writeText(gameCode).catch(() => {}); showToast('Copied: ' + gameCode); }
+function fallback() { navigator.clipboard.writeText(gameCode).catch(()=>{}); toast('Copied: ' + gameCode); }
 
-// ====== CONFETTI ======
-function launchConfetti() {
-  const colors = ['#c9a84c', '#e8c96b', '#c0392b', '#2563b8', '#1a6b3a'];
+/* ── Confetti ──────────────────────────────────── */
+function confetti() {
+  const colors = ['#f0c850','#f09040','#f06050','#5b9cf5','#44d688'];
   for (let i = 0; i < 30; i++) {
     const p = document.createElement('div');
-    p.className = 'confetti-piece';
+    p.className = 'confetti';
     p.style.left = Math.random()*100+'vw'; p.style.top = '-10px';
     p.style.background = colors[Math.floor(Math.random()*colors.length)];
     p.style.animationDuration = (1.2+Math.random())+'s';
-    p.style.animationDelay = (Math.random()*0.5)+'s';
-    const sz = 5+Math.random()*5; p.style.width=sz+'px'; p.style.height=sz+'px';
+    p.style.animationDelay = (Math.random()*.5)+'s';
+    const s = 5+Math.random()*5; p.style.width=s+'px'; p.style.height=s+'px';
+    p.style.borderRadius = Math.random()>.5 ? '50%' : '2px';
     document.body.appendChild(p);
     setTimeout(() => p.remove(), 2500);
   }
 }
 
-// ====== TOAST ======
-function showToast(msg) {
+/* ── Toast ─────────────────────────────────────── */
+function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-// ====== INIT ======
+/* ── Init ──────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
-  spawnSuitParticles();
-  document.getElementById('home-view').classList.add('visible');
-
   const cs = document.getElementById('start-chips');
-  if (cs) { cs.addEventListener('change', updateBidDisplay); updateBidDisplay(); }
+  if (cs) { cs.addEventListener('change', updateBid); updateBid(); }
 
-  document.querySelectorAll('.modal-overlay').forEach(o => {
-    o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
-  });
+  // Close modals on overlay click
+  document.querySelectorAll('.modal-bg').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
 
+  // Close raise sheet on backdrop
+  document.getElementById('raise-sheet').addEventListener('click', e => { if (e.target.classList.contains('raise-sheet')) closeRaise(); });
+
+  // Escape key
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+      document.querySelectorAll('.modal-bg.open').forEach(m => m.classList.remove('open'));
       closeRaise();
     }
   });
 
-  // Pre-fill
-  const saved = localStorage.getItem('poker_name');
-  const code = localStorage.getItem('poker_code');
-  if (saved) document.getElementById('join-name').value = saved;
-  if (code) document.getElementById('game-code-input').value = code;
-  if (localStorage.getItem('poker_host') === '1') isHost = true;
+  // Restore from localStorage
+  const n = localStorage.getItem('pk_name');
+  const c = localStorage.getItem('pk_code');
+  if (n) { document.getElementById('join-name').value = n; document.getElementById('host-name').value = n; }
+  if (c) document.getElementById('game-code-input').value = c;
+  if (localStorage.getItem('pk_host') === '1') isHost = true;
 });
