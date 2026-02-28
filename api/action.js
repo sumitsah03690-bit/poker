@@ -13,6 +13,95 @@ function calcStartingBid(chips) {
   return Math.round(chips / 40);
 }
 
+// Check if betting round is complete (all active players matched the bet)
+function isBettingComplete(game) {
+  const activePlayers = game.players.filter(p => !p.folded && p.chips > 0);
+  if (activePlayers.length <= 1) return true;
+
+  const maxBet = Math.max(...game.players.map(p => p.bet));
+  // All active players must have acted and matched the current bet
+  return activePlayers.every(p => p.bet === maxBet && p.hasActed);
+}
+
+// Advance to next active player
+function nextPlayer(game) {
+  const n = game.players.length;
+  let next = (game.currentPlayerIdx + 1) % n;
+  let tries = 0;
+  while ((game.players[next].folded || game.players[next].chips === 0) && tries < n) {
+    next = (next + 1) % n;
+    tries++;
+  }
+  game.currentPlayerIdx = next;
+}
+
+// Start a new betting round (new street)
+function startNewBettingRound(game) {
+  game.players.forEach(p => { p.bet = 0; p.hasActed = false; });
+  // First active player after dealer starts
+  game.currentPlayerIdx = game.dealerIdx;
+  nextPlayer(game);
+}
+
+// Auto-advance round when betting is complete
+function checkAndAdvanceRound(game) {
+  if (!isBettingComplete(game)) return false;
+
+  const ROUNDS = ['Pre-flop', 'Flop', 'Turn', 'River', 'Showdown'];
+
+  if (game.roundIdx < ROUNDS.length - 1) {
+    game.roundIdx++;
+    game.roundMessage = getRoundMessage(game.roundIdx);
+    addHistory(game, `Street: ${ROUNDS[game.roundIdx]}`);
+    startNewBettingRound(game);
+    return true;
+  }
+  return false;
+}
+
+function getRoundMessage(roundIdx) {
+  const messages = [
+    '',
+    '🃏 Deal 3 community cards face up',
+    '🃏 Deal the 4th community card',
+    '🃏 Deal the 5th and final card',
+    '🏆 Reveal hands — award the pot!'
+  ];
+  return messages[roundIdx] || '';
+}
+
+// Start a brand new hand
+function startNewHand(game) {
+  game.handNum++;
+  game.roundIdx = 0;
+  game.pot = 0;
+  game.roundMessage = '';
+  game.players.forEach(p => { p.bet = 0; p.folded = false; p.hasActed = false; });
+  game.dealerIdx = (game.dealerIdx + 1) % game.players.length;
+
+  // Post starting bid from player left of dealer
+  if (game.players.length >= 2) {
+    const bidIdx = (game.dealerIdx + 1) % game.players.length;
+    const bidder = game.players[bidIdx];
+    const bid = Math.min(game.startingBid, bidder.chips);
+    bidder.chips -= bid;
+    bidder.bet = bid;
+    game.pot = bid;
+    addHistory(game, `${bidder.name} posts bid`, bid);
+
+    // First player to act is left of bid poster
+    game.currentPlayerIdx = (bidIdx + 1) % game.players.length;
+    // Skip folded/busted players
+    let tries = 0;
+    while ((game.players[game.currentPlayerIdx].folded || game.players[game.currentPlayerIdx].chips === 0) && tries < game.players.length) {
+      game.currentPlayerIdx = (game.currentPlayerIdx + 1) % game.players.length;
+      tries++;
+    }
+  }
+
+  addHistory(game, `Hand ${game.handNum} begins`);
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -24,10 +113,10 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { code, action, playerIdx, amount, targetIdx, targetName } = req.body;
+    const { code, action, playerName, amount, targetIdx, targetName } = req.body;
 
     if (!code || !action) {
-      return res.status(400).json({ error: 'Code and action are required' });
+      return res.status(400).json({ error: 'Code and action required' });
     }
 
     const games = await getGamesCollection();
@@ -37,59 +126,68 @@ module.exports = async function handler(req, res) {
       return res.status(404).json({ error: 'Game not found' });
     }
 
-    // Process action
+    // Find player by name
+    const playerIdx = game.players.findIndex(p => p.name.toLowerCase() === (playerName || '').toLowerCase());
+
     switch (action) {
 
       case 'fold': {
+        // Validate it's this player's turn
+        if (playerIdx !== game.currentPlayerIdx) {
+          return res.status(400).json({ error: 'Not your turn!' });
+        }
         const p = game.players[playerIdx];
         if (!p || p.folded) break;
         p.folded = true;
+        p.hasActed = true;
         addHistory(game, `${p.name} folds`);
 
-        // Auto-win if only 1 left
+        // Check if only 1 player left
         const active = game.players.filter(x => !x.folded);
         if (active.length === 1) {
           const winner = active[0];
           winner.chips += game.pot;
           addHistory(game, `${winner.name} wins (last standing)`, game.pot);
           game.pot = 0;
-          // Start new hand
-          game.handNum++;
-          game.roundIdx = 0;
-          game.players.forEach(pl => { pl.bet = 0; pl.folded = false; });
-          game.dealerIdx = (game.dealerIdx + 1) % game.players.length;
-          if (game.players.length >= 2) {
-            const bidIdx = (game.dealerIdx + 1) % game.players.length;
-            const bidder = game.players[bidIdx];
-            const bid = Math.min(game.startingBid, bidder.chips);
-            bidder.chips -= bid;
-            bidder.bet = bid;
-            game.pot = bid;
-            addHistory(game, `${bidder.name} posts bid`, bid);
-          }
-          addHistory(game, `Hand ${game.handNum} begins`);
+          startNewHand(game);
+        } else {
+          nextPlayer(game);
+          checkAndAdvanceRound(game);
         }
         break;
       }
 
       case 'call': {
+        if (playerIdx !== game.currentPlayerIdx) {
+          return res.status(400).json({ error: 'Not your turn!' });
+        }
         const p = game.players[playerIdx];
         if (!p || p.folded) break;
-        const currentMax = Math.max(...game.players.map(x => x.bet));
-        if (p.bet >= currentMax) {
+
+        const maxBet = Math.max(...game.players.map(x => x.bet));
+        if (p.bet >= maxBet) {
+          // It's a check
+          p.hasActed = true;
           addHistory(game, `${p.name} checks`);
         } else {
-          const callAmt = currentMax - p.bet;
+          const callAmt = maxBet - p.bet;
           const actual = Math.min(callAmt, p.chips);
           p.chips -= actual;
           p.bet += actual;
           game.pot += actual;
+          p.hasActed = true;
           addHistory(game, `${p.name} calls`, actual);
         }
+
+        nextPlayer(game);
+        checkAndAdvanceRound(game);
         break;
       }
 
       case 'raise': {
+        if (playerIdx !== game.currentPlayerIdx) {
+          return res.status(400).json({ error: 'Not your turn!' });
+        }
         const p = game.players[playerIdx];
         if (!p || p.folded) break;
         let amt = parseInt(amount) || 0;
@@ -98,62 +196,34 @@ module.exports = async function handler(req, res) {
         p.chips -= amt;
         p.bet += amt;
         game.pot += amt;
-        addHistory(game, p.chips === 0 ? `${p.name} ALL IN` : `${p.name} raises`, amt);
-        break;
-      }
+        p.hasActed = true;
 
-      case 'advance-round': {
-        const ROUNDS = ['Pre-flop', 'Flop', 'Turn', 'River', 'Showdown'];
-        if (game.roundIdx < ROUNDS.length - 1) {
-          game.roundIdx++;
-          game.players.forEach(pl => { pl.bet = 0; });
-          addHistory(game, `Street: ${ROUNDS[game.roundIdx]}`);
-        }
+        // When someone raises, everyone else needs to act again
+        game.players.forEach((pl, i) => {
+          if (i !== playerIdx && !pl.folded && pl.chips > 0) {
+            pl.hasActed = false;
+          }
+        });
+
+        addHistory(game, p.chips === 0 ? `${p.name} ALL IN` : `${p.name} raises`, amt);
+        nextPlayer(game);
         break;
       }
 
       case 'award-pot': {
-        const winner = game.players[playerIdx];
+        const winnerIdx = game.players.findIndex(p => p.name.toLowerCase() === (targetName || '').toLowerCase());
+        const winner = game.players[winnerIdx];
         if (!winner) break;
         const won = game.pot;
         winner.chips += won;
         addHistory(game, `${winner.name} wins the pot`, won);
         game.pot = 0;
-
-        // New hand
-        game.handNum++;
-        game.roundIdx = 0;
-        game.players.forEach(pl => { pl.bet = 0; pl.folded = false; });
-        game.dealerIdx = (game.dealerIdx + 1) % game.players.length;
-        if (game.players.length >= 2) {
-          const bidIdx = (game.dealerIdx + 1) % game.players.length;
-          const bidder = game.players[bidIdx];
-          const bid = Math.min(game.startingBid, bidder.chips);
-          bidder.chips -= bid;
-          bidder.bet = bid;
-          game.pot = bid;
-          addHistory(game, `${bidder.name} posts bid`, bid);
-        }
-        addHistory(game, `Hand ${game.handNum} begins`);
+        startNewHand(game);
         break;
       }
 
       case 'new-hand': {
-        game.handNum++;
-        game.roundIdx = 0;
-        game.pot = 0;
-        game.players.forEach(pl => { pl.bet = 0; pl.folded = false; });
-        game.dealerIdx = (game.dealerIdx + 1) % game.players.length;
-        if (game.players.length >= 2) {
-          const bidIdx = (game.dealerIdx + 1) % game.players.length;
-          const bidder = game.players[bidIdx];
-          const bid = Math.min(game.startingBid, bidder.chips);
-          bidder.chips -= bid;
-          bidder.bet = bid;
-          game.pot = bid;
-          addHistory(game, `${bidder.name} posts bid`, bid);
-        }
-        addHistory(game, `Hand ${game.handNum} begins`);
+        startNewHand(game);
         break;
       }
 
@@ -171,7 +241,7 @@ module.exports = async function handler(req, res) {
       }
 
       case 'loan': {
-        const lender = game.players[playerIdx];
+        const lender = game.players.find(p => p.name.toLowerCase() === (playerName || '').toLowerCase());
         const borrower = game.players[targetIdx];
         const loanAmt = parseInt(amount) || 0;
         if (!lender || !borrower || loanAmt <= 0 || loanAmt > lender.chips) break;
@@ -185,7 +255,7 @@ module.exports = async function handler(req, res) {
       }
 
       case 'collect-debt': {
-        const collector = game.players[playerIdx];
+        const collector = game.players.find(p => p.name.toLowerCase() === (playerName || '').toLowerCase());
         const debtor = game.players[targetIdx];
         if (!collector || !debtor) break;
         const debtIdx = debtor.debts.findIndex(d => d.from === collector.name);
@@ -200,13 +270,24 @@ module.exports = async function handler(req, res) {
       }
 
       default:
-        return res.status(400).json({ error: 'Unknown action: ' + action });
+        return res.status(400).json({ error: 'Unknown action' });
     }
 
-    // Save updated game
+    // Save
     await games.updateOne(
       { code: code.toUpperCase() },
-      { $set: { players: game.players, pot: game.pot, roundIdx: game.roundIdx, handNum: game.handNum, dealerIdx: game.dealerIdx, history: game.history } }
+      {
+        $set: {
+          players: game.players,
+          pot: game.pot,
+          roundIdx: game.roundIdx,
+          handNum: game.handNum,
+          dealerIdx: game.dealerIdx,
+          currentPlayerIdx: game.currentPlayerIdx,
+          roundMessage: game.roundMessage || '',
+          history: game.history
+        }
+      }
     );
 
     return res.status(200).json({ game });

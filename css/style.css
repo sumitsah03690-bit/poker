@@ -508,26 +508,79 @@ select {
   padding: 2px 5px; margin-top: 3px;
 }
 
-/* Player action buttons on each card */
-.player-actions {
-  display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;
+/* Active player highlight */
+.player-card.active-player {
+  border-color: var(--gold);
+  box-shadow: 0 0 20px rgba(201,168,76,0.15);
+  animation: activeGlow 2s ease-in-out infinite;
 }
 
-.p-act-btn {
-  flex: 1; min-width: 50px;
-  padding: 7px 4px; border-radius: 6px;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.65rem; font-weight: 700;
-  cursor: pointer; border: none;
-  min-height: 32px; touch-action: manipulation;
-  transition: all var(--transition-fast);
+@keyframes activeGlow {
+  0%, 100% { box-shadow: 0 0 12px rgba(201,168,76,0.1); }
+  50% { box-shadow: 0 0 24px rgba(201,168,76,0.25); }
+}
+
+/* ---- ACTION BAR (sticky bottom) ---- */
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  background: rgba(13,43,26,0.95);
+  border: 1px solid rgba(201,168,76,0.15);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 12px 16px calc(12px + var(--safe-bottom));
+  margin: 0 -16px;
+  backdrop-filter: blur(12px);
+  z-index: 10;
   text-align: center;
+  transition: all var(--transition-fast);
 }
-.p-act-btn:active { transform: scale(0.94); }
 
-.p-act-btn.p-fold { background: rgba(192,57,43,0.12); border: 1px solid rgba(192,57,43,0.3); color: var(--red-soft); }
-.p-act-btn.p-call { background: rgba(37,99,184,0.12); border: 1px solid rgba(37,99,184,0.3); color: #79aff0; }
-.p-act-btn.p-raise { background: rgba(201,168,76,0.12); border: 1px solid rgba(201,168,76,0.3); color: var(--gold); }
+.action-bar.my-turn {
+  border-color: var(--gold);
+  box-shadow: 0 -4px 30px rgba(201,168,76,0.15);
+}
+
+.turn-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.72rem; letter-spacing: 0.06em;
+  color: var(--muted); margin-bottom: 8px;
+}
+
+.action-bar.my-turn .turn-label {
+  color: var(--gold); font-weight: 600;
+}
+
+.action-btns-row {
+  display: flex; gap: 8px;
+}
+
+.action-btn {
+  flex: 1; padding: 14px 8px; border-radius: 10px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.85rem; font-weight: 700;
+  cursor: pointer; border: none;
+  min-height: 48px; touch-action: manipulation;
+  transition: all var(--transition-fast);
+}
+.action-btn:active { transform: scale(0.95); }
+
+.action-btn.fold {
+  background: rgba(192,57,43,0.15); border: 1.5px solid rgba(192,57,43,0.4);
+  color: var(--red-soft);
+}
+.action-btn.check-call {
+  background: rgba(37,99,184,0.15); border: 1.5px solid rgba(37,99,184,0.4);
+  color: #79aff0;
+}
+.action-btn.raise {
+  background: rgba(201,168,76,0.15); border: 1.5px solid rgba(201,168,76,0.4);
+  color: var(--gold);
+}
+
+.showdown-bar {
+  text-align: center;
+  padding: 0 0 12px;
+}
 
 /* Debt badges */
 .debt-section { margin-top: 4px; border-top: 1px solid rgba(255,107,107,0.12); padding-top: 4px; }

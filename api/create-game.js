@@ -51,6 +51,8 @@ module.exports = async function handler(req, res) {
       roundIdx: 0,
       handNum: 1,
       dealerIdx: 0,
+      currentPlayerIdx: 0,
+      roundMessage: '',
       hostName: name.trim(),
       players: [
         {
@@ -58,6 +60,7 @@ module.exports = async function handler(req, res) {
           chips: startingChips,
           bet: 0,
           folded: false,
+          hasActed: false,
           debts: []
         }
       ],

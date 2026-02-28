@@ -39,6 +39,7 @@ module.exports = async function handler(req, res) {
       chips: game.startingChips,
       bet: 0,
       folded: false,
+      hasActed: false,
       debts: []
     };
 
