@@ -17,7 +17,10 @@ async function getDB() {
 
 async function getGamesCollection() {
   const database = await getDB();
-  return database.collection('games');
+  const col = database.collection('games');
+  // TTL index: auto-delete games older than 2 days (172800 seconds)
+  await col.createIndex({ createdAt: 1 }, { expireAfterSeconds: 172800 }).catch(() => {});
+  return col;
 }
 
 module.exports = { getGamesCollection };
