@@ -1,24 +1,16 @@
 // ============================================================
-//  PokerChips.io — Personal Edition v3
-//  Free Turn, Casual Poker with Debt System
+//  PokerChips.io — Full-Stack Client
+//  Communicates with Vercel Serverless API + MongoDB
 // ============================================================
 
-// ====== STATE ======
-const gameState = {
-  code: '',
-  pot: 0,
-  startingBid: 50,
-  players: [],
-  dealerIdx: 0,
-  roundIdx: 0,
-  handNum: 1,
-  myIdx: 0,
-  startingChips: 2000,
-  history: [],
-  isHost: false,
-  raisePlayerIdx: -1,
-  raiseAmount: 0
-};
+// ====== LOCAL STATE ======
+let gameCode = '';
+let myName = '';
+let myIdx = -1;
+let gameData = null;
+let pollTimer = null;
+let raisePlayerIdx = -1;
+let raiseAmount = 0;
 
 const ROUNDS = [
   { name: 'Pre-flop', msg: '' },
@@ -30,22 +22,53 @@ const ROUNDS = [
 
 function calcStartingBid(chips) { return Math.round(chips / 40); }
 
-// ====== UTILITIES ======
-function randomCode() {
-  const chars = 'ACEKQJ23456789';
-  let c = '';
-  for (let i = 0; i < 5; i++) c += chars[Math.floor(Math.random() * chars.length)];
-  return c;
+// ====== API HELPERS ======
+const API = '';
+
+async function apiPost(endpoint, body) {
+  try {
+    const res = await fetch(`${API}/api/${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Server error'); return null; }
+    return data;
+  } catch (err) {
+    showToast('Connection error — check internet');
+    console.error(err);
+    return null;
+  }
 }
 
-function ts() {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+async function apiGet(endpoint) {
+  try {
+    const res = await fetch(`${API}/api/${endpoint}`);
+    const data = await res.json();
+    if (!res.ok) return null;
+    return data;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
 }
 
-function log(text, amount) {
-  gameState.history.unshift({ time: ts(), text, amount: amount || null });
-  if (gameState.history.length > 60) gameState.history.pop();
-  renderLog();
+// ====== POLLING ======
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(async () => {
+    if (!gameCode) return;
+    const data = await apiGet(`game-state?code=${gameCode}`);
+    if (data && data.game) {
+      gameData = data.game;
+      renderGame();
+    }
+  }, 2000);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
 // ====== PARTICLES ======
@@ -85,92 +108,77 @@ function updateBidDisplay() {
 }
 
 // ====== CREATE GAME ======
-function createGame() {
+async function createGame() {
   const name = document.getElementById('host-name').value.trim();
   if (!name) { showToast('Enter your name first!'); return; }
   const chips = parseInt(document.getElementById('start-chips').value);
 
-  gameState.code = randomCode();
-  gameState.startingChips = chips;
-  gameState.startingBid = calcStartingBid(chips);
-  gameState.isHost = true;
-  gameState.players = [{ name, chips, bet: 0, folded: false, isMe: true, debts: [] }];
-  gameState.myIdx = 0;
-  gameState.dealerIdx = 0;
-  gameState.pot = 0;
-  gameState.handNum = 1;
-  gameState.roundIdx = 0;
-  gameState.history = [];
+  showToast('Creating game...');
 
-  log(`${name} created the game`);
+  const data = await apiPost('create-game', { name, chips });
+  if (!data) return;
+
+  gameCode = data.code;
+  myName = name;
+  myIdx = 0;
+  gameData = data.game;
+
+  // Save to localStorage for reconnection
+  localStorage.setItem('poker_name', myName);
+  localStorage.setItem('poker_code', gameCode);
+
   showView('game-view', 'home-view');
   renderGame();
-  showToast('Game created! Share code: ' + gameState.code);
+  startPolling();
+  showToast('Game created! Share code: ' + gameCode);
 }
 
-// ====== JOIN ======
-function joinGame() {
+// ====== JOIN GAME ======
+async function joinGame() {
   const name = document.getElementById('join-name').value.trim();
   const code = document.getElementById('game-code-input').value.trim().toUpperCase();
   if (!name) { showToast('Enter your name!'); return; }
   if (!code) { showToast('Enter a game code!'); return; }
 
-  if (gameState.code && gameState.code === code) {
-    if (gameState.players.find(p => p.name.toLowerCase() === name.toLowerCase())) { showToast('That name is taken!'); return; }
-    gameState.players.push({ name, chips: gameState.startingChips, bet: 0, folded: false, isMe: false, debts: [] });
-    log(`${name} joined`);
-    renderGame();
-    showToast(`${name} joined!`);
-  } else {
-    showToast('Game not found — try the demo!');
-  }
-}
+  showToast('Joining...');
 
-function joinDemo() {
-  const name = document.getElementById('join-name').value.trim() || 'You';
-  gameState.code = 'DEMO1';
-  gameState.startingChips = 2000;
-  gameState.startingBid = calcStartingBid(2000);
-  gameState.isHost = true;
-  gameState.pot = 0;
-  gameState.handNum = 1;
-  gameState.roundIdx = 0;
-  gameState.history = [];
+  const data = await apiPost('join-game', { code, name });
+  if (!data) return;
 
-  gameState.players = [
-    { name: 'Alice',  chips: 2000, bet: 0, folded: false, isMe: false, debts: [] },
-    { name: 'Bob',    chips: 2000, bet: 0, folded: false, isMe: false, debts: [] },
-    { name: name,     chips: 2000, bet: 0, folded: false, isMe: true,  debts: [] },
-    { name: 'Diana',  chips: 2000, bet: 0, folded: false, isMe: false, debts: [] },
-  ];
-  gameState.myIdx = 2;
-  gameState.dealerIdx = 0;
+  gameCode = code;
+  myName = name;
+  myIdx = data.playerIdx;
+  gameData = data.game;
 
-  postStartingBid();
+  localStorage.setItem('poker_name', myName);
+  localStorage.setItem('poker_code', gameCode);
 
   showView('game-view', 'home-view');
   renderGame();
-  log('Demo game started');
-  showToast('Demo game started!');
+  startPolling();
+  showToast(`Joined the table!`);
 }
 
-function postStartingBid() {
-  const n = gameState.players.length;
-  if (n < 2) return;
-  const idx = (gameState.dealerIdx + 1) % n;
-  const p = gameState.players[idx];
-  const bid = Math.min(gameState.startingBid, p.chips);
-  p.chips -= bid;
-  p.bet = bid;
-  gameState.pot = bid;
-  log(`${p.name} posts bid`, bid);
+// ====== SEND ACTION ======
+async function sendAction(action, extra = {}) {
+  const data = await apiPost('action', { code: gameCode, action, ...extra });
+  if (data && data.game) {
+    gameData = data.game;
+    renderGame();
+  }
+  return data;
 }
 
 // ====== RENDER ======
 function renderGame() {
-  document.getElementById('game-code-display').textContent = gameState.code;
-  document.getElementById('game-round-display').textContent = 'Hand ' + gameState.handNum;
-  document.getElementById('pot-display').textContent = gameState.pot.toLocaleString();
+  if (!gameData) return;
+
+  document.getElementById('game-code-display').textContent = gameCode;
+  document.getElementById('game-round-display').textContent = 'Hand ' + gameData.handNum;
+  document.getElementById('pot-display').textContent = gameData.pot.toLocaleString();
+
+  // Update my index (in case players array changed)
+  myIdx = gameData.players.findIndex(p => p.name.toLowerCase() === myName.toLowerCase());
 
   renderRoundStepper();
   renderPlayers();
@@ -182,35 +190,28 @@ function renderRoundStepper() {
   container.innerHTML = '';
   ROUNDS.forEach((r, i) => {
     const pill = document.createElement('span');
-    pill.className = 'round-pill' + (i === gameState.roundIdx ? ' active' : '') + (i < gameState.roundIdx ? ' done' : '');
+    pill.className = 'round-pill' + (i === gameData.roundIdx ? ' active' : '') + (i < gameData.roundIdx ? ' done' : '');
     pill.textContent = r.name;
     container.appendChild(pill);
   });
 
   const btnText = document.getElementById('round-advance-text');
-  if (gameState.roundIdx < ROUNDS.length - 1) {
-    btnText.textContent = 'Next → ' + ROUNDS[gameState.roundIdx + 1].name;
+  if (gameData.roundIdx < ROUNDS.length - 1) {
+    btnText.textContent = 'Next → ' + ROUNDS[gameData.roundIdx + 1].name;
   } else {
     btnText.textContent = 'End Hand';
   }
 }
 
-function advanceRound() {
-  if (gameState.roundIdx < ROUNDS.length - 1) {
-    gameState.roundIdx++;
-    const r = ROUNDS[gameState.roundIdx];
-
-    // Reset bets for new street
-    gameState.players.forEach(p => p.bet = 0);
-
-    log(`Street: ${r.name}`);
-    showTableMessage(r.msg);
-    showToast(r.msg);
-  } else {
-    // End of hand — showdown complete
-    showTableMessage('🏆 Hand over — award the pot!');
+async function advanceRound() {
+  const data = await sendAction('advance-round');
+  if (data && data.game) {
+    const r = ROUNDS[data.game.roundIdx];
+    if (r && r.msg) {
+      showTableMessage(r.msg);
+      showToast(r.msg);
+    }
   }
-  renderGame();
 }
 
 function showTableMessage(msg) {
@@ -226,8 +227,9 @@ function renderPlayers() {
   const grid = document.getElementById('players-grid');
   grid.innerHTML = '';
 
-  gameState.players.forEach((p, i) => {
-    const isDealer = i === gameState.dealerIdx;
+  gameData.players.forEach((p, i) => {
+    const isDealer = i === gameData.dealerIdx;
+    const isMe = p.name.toLowerCase() === myName.toLowerCase();
     const card = document.createElement('div');
     card.className = 'player-card' + (p.folded ? ' folded' : '');
 
@@ -238,23 +240,22 @@ function renderPlayers() {
     if (p.debts && p.debts.length > 0) {
       debtsHtml = '<div class="debt-section">';
       p.debts.forEach((d, di) => {
-        const isMyDebt = gameState.players[gameState.myIdx] && gameState.players[gameState.myIdx].name === d.from;
-        const canCollect = isMyDebt && p.chips >= d.amount;
+        const canCollect = d.from.toLowerCase() === myName.toLowerCase() && p.chips >= d.amount;
         debtsHtml += `<div class="debt-badge">
           <span class="debt-text">owes ${d.from}: ${d.amount}</span>
-          ${canCollect ? `<button class="debt-collect-btn" onclick="collectDebt(${i},${di})">Collect</button>` : ''}
+          ${canCollect ? `<button class="debt-collect-btn" onclick="doCollectDebt(${i})">Collect</button>` : ''}
         </div>`;
       });
       debtsHtml += '</div>';
     }
 
-    // Loan button (show if low chips)
+    // Loan button
     let loanBtn = '';
-    if (!p.isMe && p.chips < gameState.startingBid) {
+    if (!isMe && p.chips < gameData.startingBid) {
       loanBtn = `<button class="player-loan-btn" onclick="openLoanModal(${i})">💰 Loan</button>`;
     }
 
-    // Per-player action buttons (free turn — everyone can act)
+    // Action buttons
     let actionsHtml = '';
     if (!p.folded) {
       actionsHtml = `<div class="player-actions">
@@ -267,9 +268,7 @@ function renderPlayers() {
     card.innerHTML = `
       <div class="player-top">
         <div class="player-avatar">${initial}${isDealer ? '<span class="dealer-chip">D</span>' : ''}</div>
-        <div>
-          <div class="player-name">${p.name}${p.isMe ? ' <span class="player-you-tag">(you)</span>' : ''}</div>
-        </div>
+        <div><div class="player-name">${p.name}${isMe ? ' <span class="player-you-tag">(you)</span>' : ''}</div></div>
       </div>
       <div class="player-chips-row">
         <span class="player-chips-label">chips</span>
@@ -287,222 +286,160 @@ function renderPlayers() {
 
 function renderLog() {
   const el = document.getElementById('activity-log');
-  if (!el) return;
+  if (!el || !gameData) return;
   el.innerHTML = '';
 
-  if (gameState.history.length === 0) {
+  if (!gameData.history || gameData.history.length === 0) {
     el.innerHTML = '<div class="log-entry"><span class="l-text" style="color:var(--muted)">No actions yet</span></div>';
     return;
   }
 
-  gameState.history.slice(0, 15).forEach(e => {
+  gameData.history.slice(0, 15).forEach(e => {
     const div = document.createElement('div');
     div.className = 'log-entry';
-    div.innerHTML = `<span class="l-time">${e.time}</span><span class="l-text">${e.text}</span>${e.amount !== null ? `<span class="l-amt">${e.amount.toLocaleString()}</span>` : ''}`;
+    div.innerHTML = `<span class="l-time">${e.time}</span><span class="l-text">${e.text}</span>${e.amount !== null && e.amount !== undefined ? `<span class="l-amt">${Number(e.amount).toLocaleString()}</span>` : ''}`;
     el.appendChild(div);
   });
 }
 
-// ====== PLAYER ACTIONS (Free Turn — per player) ======
-function doFold(idx) {
-  const p = gameState.players[idx];
-  if (p.folded) return;
+// ====== PLAYER ACTIONS ======
+async function doFold(idx) {
+  const p = gameData.players[idx];
+  if (!p || p.folded) return;
   if (!confirm(`Fold ${p.name}?`)) return;
-  p.folded = true;
-  log(`${p.name} folds`);
-  showToast(`${p.name} folded`);
-
-  // Auto-win if only 1 left
-  const active = gameState.players.filter(x => !x.folded);
-  if (active.length === 1) {
-    const winner = active[0];
-    winner.chips += gameState.pot;
-    log(`${winner.name} wins (last standing)`, gameState.pot);
-    showToast(`${winner.name} wins ${gameState.pot} chips! 🏆`);
-    launchConfetti();
-    gameState.pot = 0;
-    startNewHand();
+  const data = await sendAction('fold', { playerIdx: idx });
+  if (data) {
+    const active = data.game.players.filter(x => !x.folded);
+    if (active.length === 1) {
+      showToast(`${active[0].name} wins! 🏆`);
+      launchConfetti();
+    } else {
+      showToast(`${p.name} folded`);
+    }
   }
-  renderGame();
 }
 
-function doCall(idx) {
-  const p = gameState.players[idx];
-  if (p.folded) return;
-
-  // If no current bet above theirs, it's a check
-  const currentMax = Math.max(...gameState.players.map(x => x.bet));
-  if (p.bet >= currentMax) {
-    log(`${p.name} checks`);
-    showToast(`${p.name} checks`);
-  } else {
-    const callAmt = currentMax - p.bet;
-    const actual = Math.min(callAmt, p.chips);
-    p.chips -= actual;
-    p.bet += actual;
-    gameState.pot += actual;
-    log(`${p.name} calls`, actual);
-    showToast(`${p.name} calls ${actual}`);
+async function doCall(idx) {
+  const p = gameData.players[idx];
+  if (!p || p.folded) return;
+  const data = await sendAction('call', { playerIdx: idx });
+  if (data) {
+    const maxBet = Math.max(...gameData.players.map(x => x.bet));
+    if (p.bet >= maxBet) showToast(`${p.name} checks`);
+    else showToast(`${p.name} calls`);
     bumpPot();
   }
-  renderGame();
 }
 
 // ====== RAISE PANEL ======
 function openRaise(idx) {
-  const p = gameState.players[idx];
-  if (p.folded) return;
+  const p = gameData.players[idx];
+  if (!p || p.folded) return;
 
-  gameState.raisePlayerIdx = idx;
-  gameState.raiseAmount = 0;
+  raisePlayerIdx = idx;
+  raiseAmount = 0;
 
   document.getElementById('raise-for-name').textContent = p.name;
   document.getElementById('raise-max-info').textContent = `Max: ${p.chips.toLocaleString()}`;
   document.getElementById('raise-amount-display').textContent = '0';
   document.getElementById('raise-manual-input').value = '';
-
   document.getElementById('raise-panel').classList.add('visible');
-
-  // Scroll to raise panel
   document.getElementById('raise-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function closeRaise() {
   document.getElementById('raise-panel').classList.remove('visible');
-  gameState.raisePlayerIdx = -1;
+  raisePlayerIdx = -1;
 }
 
 function adjustRaise(delta) {
-  const idx = gameState.raisePlayerIdx;
-  if (idx < 0) return;
-  const p = gameState.players[idx];
-  gameState.raiseAmount = Math.max(0, Math.min(gameState.raiseAmount + delta, p.chips));
-  document.getElementById('raise-amount-display').textContent = gameState.raiseAmount.toLocaleString();
-  document.getElementById('raise-manual-input').value = gameState.raiseAmount;
+  if (raisePlayerIdx < 0) return;
+  const p = gameData.players[raisePlayerIdx];
+  raiseAmount = Math.max(0, Math.min(raiseAmount + delta, p.chips));
+  document.getElementById('raise-amount-display').textContent = raiseAmount.toLocaleString();
+  document.getElementById('raise-manual-input').value = raiseAmount;
 }
 
 function setRaiseManual() {
-  const idx = gameState.raisePlayerIdx;
-  if (idx < 0) return;
-  const p = gameState.players[idx];
+  if (raisePlayerIdx < 0) return;
+  const p = gameData.players[raisePlayerIdx];
   const val = parseInt(document.getElementById('raise-manual-input').value) || 0;
-  gameState.raiseAmount = Math.max(0, Math.min(val, p.chips));
-  document.getElementById('raise-amount-display').textContent = gameState.raiseAmount.toLocaleString();
+  raiseAmount = Math.max(0, Math.min(val, p.chips));
+  document.getElementById('raise-amount-display').textContent = raiseAmount.toLocaleString();
 }
 
 function raiseAllIn() {
-  const idx = gameState.raisePlayerIdx;
-  if (idx < 0) return;
-  const p = gameState.players[idx];
-  gameState.raiseAmount = p.chips;
-  document.getElementById('raise-amount-display').textContent = gameState.raiseAmount.toLocaleString();
-  document.getElementById('raise-manual-input').value = gameState.raiseAmount;
+  if (raisePlayerIdx < 0) return;
+  const p = gameData.players[raisePlayerIdx];
+  raiseAmount = p.chips;
+  document.getElementById('raise-amount-display').textContent = raiseAmount.toLocaleString();
+  document.getElementById('raise-manual-input').value = raiseAmount;
 }
 
-function confirmRaise() {
-  const idx = gameState.raisePlayerIdx;
-  if (idx < 0) return;
-  const p = gameState.players[idx];
-  const amt = gameState.raiseAmount;
-
-  if (amt <= 0) { showToast('Enter an amount to raise'); return; }
-  if (amt > p.chips) { showToast('Not enough chips!'); return; }
-
-  p.chips -= amt;
-  p.bet += amt;
-  gameState.pot += amt;
-
-  log(`${p.name} raises`, amt);
-  showToast(p.chips === 0 ? `${p.name} ALL IN!` : `${p.name} raises ${amt}`);
-  bumpPot();
-  closeRaise();
-  renderGame();
+async function confirmRaise() {
+  if (raisePlayerIdx < 0 || raiseAmount <= 0) { showToast('Enter an amount'); return; }
+  const p = gameData.players[raisePlayerIdx];
+  const data = await sendAction('raise', { playerIdx: raisePlayerIdx, amount: raiseAmount });
+  if (data) {
+    showToast(raiseAmount >= p.chips ? `${p.name} ALL IN!` : `${p.name} raises ${raiseAmount}`);
+    bumpPot();
+    closeRaise();
+  }
 }
 
 function bumpPot() {
   const el = document.getElementById('pot-display');
-  el.classList.remove('bump');
-  void el.offsetWidth;
-  el.classList.add('bump');
+  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 }
 
 // ====== TAKE FROM POT ======
-function takeFromPot() {
-  if (gameState.pot <= 0) { showToast('Pot is empty'); return; }
+async function takeFromPot() {
+  if (!gameData || gameData.pot <= 0) { showToast('Pot is empty'); return; }
   const name = prompt('Who gets the chips back?');
   if (!name) return;
-  const player = gameState.players.find(p => p.name.toLowerCase() === name.trim().toLowerCase());
-  if (!player) { showToast('Player not found!'); return; }
-
-  const amtStr = prompt(`Take how much from pot? (Pot: ${gameState.pot})`);
+  const amtStr = prompt(`Take how much from pot? (Pot: ${gameData.pot})`);
   const amt = parseInt(amtStr);
   if (!amt || amt <= 0) return;
-  const actual = Math.min(amt, gameState.pot);
 
-  gameState.pot -= actual;
-  player.chips += actual;
-  log(`↩ ${actual} returned to ${player.name}`, actual);
-  showToast(`${actual} chips returned to ${player.name}`);
-  renderGame();
+  const data = await sendAction('take-from-pot', { targetName: name.trim(), amount: amt });
+  if (data) showToast(`Chips returned!`);
 }
 
 // ====== NEW HAND ======
-function newHand() {
-  if (gameState.pot > 0) {
+async function newHand() {
+  if (gameData && gameData.pot > 0) {
     if (!confirm('Chips still in pot! Start new hand?')) return;
   }
-  startNewHand();
-  renderGame();
-  showToast(`Hand ${gameState.handNum} — bid posted`);
-}
-
-function startNewHand() {
-  gameState.handNum++;
-  gameState.roundIdx = 0;
-  gameState.pot = 0;
-  gameState.players.forEach(p => { p.bet = 0; p.folded = false; });
-  gameState.dealerIdx = (gameState.dealerIdx + 1) % gameState.players.length;
-
-  if (gameState.players.length >= 2) {
-    postStartingBid();
-  }
-
-  log(`Hand ${gameState.handNum} begins`);
-  showTableMessage('');
+  const data = await sendAction('new-hand');
+  if (data) showToast(`Hand ${data.game.handNum} — bid posted`);
 }
 
 // ====== AWARD POT ======
 function openAwardModal() {
-  if (gameState.pot <= 0) { showToast('Pot is empty'); return; }
+  if (!gameData || gameData.pot <= 0) { showToast('Pot is empty'); return; }
   const modal = document.getElementById('award-modal');
   modal.classList.add('open');
   const opts = document.getElementById('winner-options');
   opts.innerHTML = '';
-  document.getElementById('pot-award-display').textContent = gameState.pot.toLocaleString() + ' chips';
+  document.getElementById('pot-award-display').textContent = gameData.pot.toLocaleString() + ' chips';
 
-  gameState.players.forEach((p, i) => {
+  gameData.players.forEach((p, i) => {
     if (!p.folded) {
       const btn = document.createElement('button');
       btn.className = 'btn btn-outline';
       btn.style.marginBottom = '8px';
       btn.textContent = p.name + ' wins!';
-      btn.onclick = () => awardPot(i);
+      btn.onclick = async () => {
+        const data = await sendAction('award-pot', { playerIdx: i });
+        if (data) {
+          showToast(`${p.name} wins! 🏆`);
+          launchConfetti();
+          closeAwardModal();
+        }
+      };
       opts.appendChild(btn);
     }
   });
-}
-
-function awardPot(winnerIdx) {
-  const winner = gameState.players[winnerIdx];
-  const won = gameState.pot;
-  winner.chips += won;
-  log(`${winner.name} wins the pot`, won);
-  showToast(`${winner.name} wins ${won.toLocaleString()} chips! 🏆`);
-  launchConfetti();
-  gameState.pot = 0;
-  closeAwardModal();
-  startNewHand();
-  renderGame();
 }
 
 function closeAwardModal() { document.getElementById('award-modal').classList.remove('open'); }
@@ -512,7 +449,7 @@ let loanTargetIdx = -1;
 
 function openLoanModal(idx) {
   loanTargetIdx = idx;
-  document.getElementById('loan-target-name').textContent = gameState.players[idx].name;
+  document.getElementById('loan-target-name').textContent = gameData.players[idx].name;
   document.getElementById('loan-amount').value = '';
   document.getElementById('loan-modal').classList.add('open');
   setTimeout(() => document.getElementById('loan-amount').focus(), 100);
@@ -520,58 +457,44 @@ function openLoanModal(idx) {
 
 function closeLoanModal() { document.getElementById('loan-modal').classList.remove('open'); loanTargetIdx = -1; }
 
-function confirmLoan() {
-  if (loanTargetIdx < 0) return;
-  const me = gameState.players[gameState.myIdx];
-  const borrower = gameState.players[loanTargetIdx];
+async function confirmLoan() {
+  if (loanTargetIdx < 0 || myIdx < 0) return;
   const amt = parseInt(document.getElementById('loan-amount').value);
   if (!amt || amt <= 0) { showToast('Enter a valid amount'); return; }
-  if (amt > me.chips) { showToast('You don\'t have enough chips!'); return; }
 
-  me.chips -= amt;
-  borrower.chips += amt;
-
-  const existing = borrower.debts.find(d => d.from === me.name);
-  if (existing) { existing.amount += amt; } else { borrower.debts.push({ from: me.name, amount: amt }); }
-
-  log(`${me.name} loaned to ${borrower.name}`, amt);
-  showToast(`Loaned ${amt} to ${borrower.name}`);
-  closeLoanModal();
-  renderGame();
+  const data = await sendAction('loan', { playerIdx: myIdx, targetIdx: loanTargetIdx, amount: amt });
+  if (data) {
+    showToast(`Loaned ${amt} chips`);
+    closeLoanModal();
+  }
 }
 
-function collectDebt(borrowerIdx, debtIdx) {
-  const borrower = gameState.players[borrowerIdx];
-  const debt = borrower.debts[debtIdx];
-  if (!debt) return;
-  const me = gameState.players[gameState.myIdx];
-  if (debt.from !== me.name) return;
-  if (borrower.chips < debt.amount) { showToast(`${borrower.name} doesn't have enough`); return; }
-
-  borrower.chips -= debt.amount;
-  me.chips += debt.amount;
-  log(`${me.name} collected debt from ${borrower.name}`, debt.amount);
-  showToast(`Collected ${debt.amount} from ${borrower.name}`);
-  borrower.debts.splice(debtIdx, 1);
-  renderGame();
+async function doCollectDebt(borrowerIdx) {
+  if (myIdx < 0) return;
+  const data = await sendAction('collect-debt', { playerIdx: myIdx, targetIdx: borrowerIdx });
+  if (data) showToast('Debt collected!');
 }
 
 // ====== LEAVE ======
 function leaveGame() {
   if (!confirm('Leave the game?')) return;
+  stopPolling();
+  gameCode = '';
+  gameData = null;
+  localStorage.removeItem('poker_code');
   showView('home-view', 'game-view');
 }
 
 // ====== SHARE ======
 function copyCode() {
-  const text = `Join my poker game! Code: ${gameState.code}`;
+  const text = `Join my poker game! Code: ${gameCode}\n${window.location.origin}`;
   if (navigator.share) {
-    navigator.share({ title: 'PokerChips.io', text, url: window.location.href }).catch(() => fallbackCopy());
+    navigator.share({ title: 'PokerChips.io', text, url: window.location.origin }).catch(() => fallbackCopy());
   } else { fallbackCopy(); }
 }
 function fallbackCopy() {
-  navigator.clipboard.writeText(gameState.code).catch(() => {});
-  showToast('Code copied: ' + gameState.code);
+  navigator.clipboard.writeText(gameCode).catch(() => {});
+  showToast('Code copied: ' + gameCode);
 }
 
 // ====== CONFETTI ======
@@ -623,11 +546,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Prevent double-tap zoom on mobile
-  let lastTouch = 0;
-  document.addEventListener('touchend', e => {
-    const now = Date.now();
-    if (now - lastTouch <= 300) e.preventDefault();
-    lastTouch = now;
-  }, false);
+  // Try auto-rejoin from saved state
+  const savedName = localStorage.getItem('poker_name');
+  const savedCode = localStorage.getItem('poker_code');
+  if (savedName && savedCode) {
+    document.getElementById('join-name').value = savedName;
+    document.getElementById('game-code-input').value = savedCode;
+  }
 });
