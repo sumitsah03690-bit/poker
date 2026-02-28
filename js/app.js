@@ -137,15 +137,8 @@ function render() {
   const bar = document.getElementById('my-actions');
   if (me && !me.folded) {
     bar.style.display = '';
-    const owed = (gameData.callAmount || 0) - me.bet;
-    const callBtn = document.getElementById('btn-call');
-    const checkBtn = document.getElementById('btn-check');
-    if (owed > 0) {
-      callBtn.style.display = ''; callBtn.textContent = `Call ${owed}`;
-      checkBtn.style.display = 'none';
-    } else {
-      callBtn.style.display = 'none'; checkBtn.style.display = '';
-    }
+    const owed = Math.max(0, (gameData.callAmount || 0) - me.bet);
+    document.getElementById('btn-call').textContent = `Call ${owed}`;
   } else {
     bar.style.display = 'none';
   }
