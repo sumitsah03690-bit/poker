@@ -58,10 +58,38 @@ module.exports = async function handler(req, res) {
       }
     );
 
+    // If this is the 2nd player, post starting bid to kick off the game
     const updated = await games.findOne({ code: code.toUpperCase() });
-    const playerIdx = updated.players.findIndex(p => p.name.toLowerCase() === trimName.toLowerCase());
+    if (updated.players.length === 2 && updated.pot === 0) {
+      const bidIdx = (updated.dealerIdx + 1) % updated.players.length;
+      const bidder = updated.players[bidIdx];
+      const bid = Math.min(updated.startingBid, bidder.chips);
+      bidder.chips -= bid;
+      bidder.bet = bid;
+      const currentIdx = (bidIdx + 1) % updated.players.length;
 
-    return res.status(200).json({ game: updated, playerIdx });
+      await games.updateOne(
+        { code: code.toUpperCase() },
+        {
+          $set: {
+            pot: bid,
+            players: updated.players,
+            currentPlayerIdx: currentIdx
+          },
+          $push: {
+            history: {
+              $each: [{ time: ts, text: `${bidder.name} posts bid`, amount: bid }],
+              $position: 0
+            }
+          }
+        }
+      );
+    }
+
+    const finalGame = await games.findOne({ code: code.toUpperCase() });
+    const playerIdx = finalGame.players.findIndex(p => p.name.toLowerCase() === trimName.toLowerCase());
+
+    return res.status(200).json({ game: finalGame, playerIdx });
   } catch (err) {
     console.error('join-game error:', err);
     return res.status(500).json({ error: 'Server error' });
